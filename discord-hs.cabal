@@ -1,0 +1,58 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 1544ac0e7449ee3a54e07a0f549599bcbde44146b1189451e143b19f001d931c
+
+name:           discord-hs
+version:        0.1.0.0
+homepage:       https://github.com/cnr/discord-hs#readme
+bug-reports:    https://github.com/cnr/discord-hs/issues
+maintainer:     Connor James
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+
+source-repository head
+  type: git
+  location: https://github.com/cnr/discord-hs
+
+library
+  exposed-modules:
+      Discord.Client
+      Discord.Gateway
+      Discord.Main
+  other-modules:
+      Paths_discord_hs
+  hs-source-dirs:
+      src
+  default-extensions: GeneralizedNewtypeDeriving
+  ghc-options: -Wall
+  build-depends:
+      aeson
+    , base >=4.12.0.0 && <4.13
+    , bytestring
+    , lens
+    , mtl
+    , network
+    , req
+    , text
+    , unliftio
+    , websockets
+    , wuss
+  default-language: Haskell2010
+
+executable discord-hs
+  main-is: Main.hs
+  other-modules:
+      Paths_discord_hs
+  hs-source-dirs:
+      app
+  default-extensions: GeneralizedNewtypeDeriving
+  ghc-options: -Wall
+  build-depends:
+      base >=4.12.0.0 && <4.13
+    , discord-hs
+  default-language: Haskell2010
