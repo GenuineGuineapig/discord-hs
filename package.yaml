@@ -30,6 +30,7 @@ library:
     - Discord.Client
     - Discord.Gateway
     - Discord.Main
+    - Discord.Types
   dependencies:
     - aeson
     - bytestring
