@@ -1,0 +1,35 @@
+cabal-version:       2.4
+
+name:                discord
+version:             0.1.0.0
+license:             MIT
+license-file:        LICENSE
+author:              Connor James
+maintainer:          connornjames@gmail.com
+
+library
+  ghc-options:         -Wall
+  build-depends:       base ^>=4.12.0.0,
+                       aeson,
+                       bytestring,
+                       lens,
+                       mtl,
+                       network,
+                       req,
+                       text,
+                       unliftio,
+                       websockets,
+                       wuss
+  hs-source-dirs:      src
+  exposed-modules:     Discord.Client,
+                       Discord.Gateway,
+                       Discord.Main
+  default-language:    Haskell2010
+  default-extensions:  GeneralizedNewtypeDeriving
+
+executable discord
+  build-depends:       base ^>=4.12.0.0,
+                       discord
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  default-language:    Haskell2010
