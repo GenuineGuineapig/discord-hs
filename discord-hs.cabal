@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4a7e8aa40221878238971f30ffb18382ed51983819f09324ed892884a82f74d8
+-- hash: d6eb3429dd85b07180665485a28ae4a0801553eb0e23f57b15c8c0210b24beb8
 
 name:           discord-hs
 version:        0.1.0.0
@@ -43,17 +43,4 @@ library
     , unliftio
     , websockets
     , wuss
-  default-language: Haskell2010
-
-executable discord-hs
-  main-is: Main.hs
-  other-modules:
-      Paths_discord_hs
-  hs-source-dirs:
-      app
-  default-extensions: DataKinds GeneralizedNewtypeDeriving LambdaCase NumericUnderscores OverloadedStrings ScopedTypeVariables
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
-  build-depends:
-      base >=4.12.0.0 && <4.13
-    , discord-hs
   default-language: Haskell2010

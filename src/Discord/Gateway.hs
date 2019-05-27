@@ -20,7 +20,7 @@ import Discord.Types
 
 data GatewayRequest = Identify Token ConnectionProps {- TODO Compression, Large threshold, Shard, Presence -} 
                     | Resume -- TODO
-                    | OutgoingHeartbeat Int
+                    | OutgoingHeartbeat (Maybe Int)
                     | RequestGuildMembers -- TODO
                     | UpdateVoiceState -- TODO
                     | UpdateStatus -- TODO
@@ -43,7 +43,7 @@ instance ToJSON ConnectionProps where
 
 instance ToJSON GatewayRequest where
     toJSON = \case
-        OutgoingHeartbeat _  -> gatewayReq 1 $ object [] -- TODO: sequence
+        OutgoingHeartbeat s  -> gatewayReq 1 $ maybe Null (Number . fromIntegral) s
         Identify token props -> gatewayReq 2 $ object ["token" .= token, "properties" .= props]
         r -> error ("unimplemented gateway request" <> show r)
 

@@ -1,7 +1,6 @@
 
 module Discord.Main where
 
-import           Control.Concurrent (threadDelay)
 import           Control.Monad.IO.Class
 import           Data.Aeson
 import qualified Data.Text.IO as TIO
@@ -21,10 +20,13 @@ runReq' = runReq defaultHttpConfig . fmap responseBody
 appMain :: IO ()
 appMain = undefined
 
+printEvents :: Handler
+printEvents = liftIO . print
+
 main :: IO ()
 main = withSocketsDo $ do
     token <- Token <$> TIO.readFile "../discord.auth"
-    runDiscord ReconnectAlways token $ liftIO (threadDelay maxBound)
+    startDiscord ReconnectAlways token printEvents
 
     --gatewayUrl <- runReq' $ req GET (baseUrl /: "gateway") NoReqBody jsonResponse mempty
 

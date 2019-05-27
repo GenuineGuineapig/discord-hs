@@ -1,10 +1,12 @@
 
 module Discord.Client
-    ( MonadDiscord(..)
-    , Discord(..)
-    , runDiscord
+    ( Discord(..)
     , Env(..)
+    , Handler
+    , MonadDiscord(..)
     , ReconnectPolicy(..)
+    , runDiscord
+    , startDiscord
     )
     where
 
@@ -12,54 +14,55 @@ import           Data.Aeson
 import qualified Data.ByteString.Lazy as BL
 import           Control.Monad.Reader
 import qualified Network.WebSockets as WS
-import           UnliftIO
+import           UnliftIO hiding (Handler)
 import           UnliftIO.Concurrent
 import           Wuss
 
 import           Discord.Gateway
 
-data Env = Env { incomingWS :: Chan GatewayMessage, outgoingWS :: Chan GatewayRequest }
+
+type Handler = Event -> Discord ()
+
 
 data ReconnectPolicy =
     ReconnectAlways
   | ReconnectNever
     deriving Show
 
-runDiscord :: MonadIO m => ReconnectPolicy -> Token -> Discord a -> m a
-runDiscord policy token action = liftIO $ do
-    incoming <- newChan
-    outgoing <- newChan
+startDiscord :: MonadIO m => ReconnectPolicy -> Token -> Handler -> m ()
+startDiscord policy token handler = liftIO $ do
+    -- TODO rest requests
+    gtid <- runGatewayClient policy token handler
 
-    gtid <- runGatewayClient policy incoming outgoing
+    threadDelay maxBound `finally` killThread gtid -- TODO
 
-    runReaderT (unDiscord (login token >> action)) (Env incoming outgoing) `finally` killThread gtid
+login :: Token -> WS.ClientApp Int {- heartbeat interval -}
+login token conn = do
+    heartbeatInterval <- receiveHello conn
+    writeMessage (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs")) conn
+    Ready _ _ _ <- receiveReady conn -- TODO: unpack cache values?
+    pure heartbeatInterval
 
-login :: Token -> Discord ()
-login token = do
-    hello <- receive
-    case hello of
-        Hello interval -> do
-            -- _ <- spawnHeartbeatThread interval
-            send (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs"))
-            ready <- receive -- TODO: ignore heartbeat ack and start heartbeat thread before this?
-            case ready of
-                Dispatch _ (Ready _ _ _) -> do -- TODO: cache fields
-                    _ <- spawnHeartbeatThread interval
-                    forever $ receive >>= liftIO . print
-                _  -> error ("expected ready, got " <> show ready)
-        _ -> error ("expected hello, got " <> show hello)
+receiveHello :: WS.ClientApp Int
+receiveHello conn = do
+    msg <- readMessage conn
+    case msg of
+        Hello interval -> pure interval
+        _ -> receiveHello conn -- TODO: exception? unexpected message
 
-spawnHeartbeatThread :: Int -> Discord ThreadId
-spawnHeartbeatThread ms = forkIO $ forever $ do
-    send (OutgoingHeartbeat 0) -- TODO: replace 0 with sequence
-    threadDelay (ms * 1000)
+receiveReady :: WS.ClientApp Event
+receiveReady conn = do
+    msg <- readMessage conn
+    case msg of
+        Dispatch _ event@(Ready _ _ _) -> pure event
+        _ -> receiveReady conn -- TODO: exception? unexpected message
 
 
 -- TODO: rate limits
-runGatewayClient :: ReconnectPolicy -> Chan GatewayMessage -> Chan GatewayRequest -> IO ThreadId
-runGatewayClient policy incoming outgoing = forkWithUnmask $ \restore ->
+runGatewayClient :: ReconnectPolicy -> Token -> Handler -> IO ThreadId
+runGatewayClient policy token handler = forkWithUnmask $ \restore ->
     forever $ do
-        restore (runSecureClient "gateway.discord.gg" 443 "/" $ \conn -> race_ (readMessages conn) (writeMessages conn))
+        restore (runSecureClient "gateway.discord.gg" 443 "/" (discordClient token handler))
             `catch` \(e :: SomeException) -> do
                 putStrLn ("Exception in gateway client: " <> show e)
                 case policy of
@@ -71,23 +74,57 @@ runGatewayClient policy incoming outgoing = forkWithUnmask $ \restore ->
 
     where
 
-    readMessages conn = forever $ do
+discordClient :: Token -> Handler -> WS.ClientApp ()
+discordClient token handler conn = do
+    heartbeatInterval <- login token conn
+    sequenceRef       <- newIORef Nothing
+
+    race_ (heartbeat sequenceRef heartbeatInterval)
+          (eventLoop sequenceRef)
+
+    where
+
+    heartbeat :: IORef (Maybe Int) -> Int -> IO ()
+    heartbeat sequenceRef heartbeatInterval = forever $ do
+        currentSeq <- readIORef sequenceRef
+        writeMessage (OutgoingHeartbeat currentSeq) conn
+        threadDelay (heartbeatInterval * 1000)
+
+    eventLoop :: IORef (Maybe Int) -> IO ()
+    eventLoop sequenceRef = do
+        msg <- readMessage conn
+        case msg of
+            HeartbeatAck -> pure ()
+            Dispatch n event -> do
+                writeIORef sequenceRef (Just n)
+                runDiscord (handler event) (Env conn)
+            t -> putStrLn ("UNHANDLED: " <> show t)
+        eventLoop sequenceRef
+
+readMessage :: WS.ClientApp GatewayMessage
+readMessage conn = do
         rawMsg <- WS.receiveData conn :: IO BL.ByteString
         case eitherDecode rawMsg of
-            Right msg -> writeChan incoming msg
+            Right msg -> pure msg
             Left err  -> throwString ("Error decoding message: " <> err) -- TODO: create exception type
 
-    writeMessages conn = forever $ do
-        msg <- readChan outgoing
-        WS.sendTextData conn (encode msg)
+writeMessage :: GatewayRequest -> WS.ClientApp ()
+writeMessage msg conn = WS.sendTextData conn (encode msg)
+
+data Env = Env { envConn :: WS.Connection }
 
 newtype Discord a = Discord { unDiscord :: ReaderT Env IO a } deriving (Functor, Applicative, Monad, MonadIO, MonadReader Env, MonadUnliftIO)
 
+runDiscord :: Discord a -> Env -> IO a
+runDiscord action env = runReaderT (unDiscord action) env
+
 instance MonadDiscord Discord where
-    receive = liftIO . readChan =<< asks incomingWS
+    receive = do
+        conn <- asks envConn
+        liftIO $ readMessage conn
     send msg = do
-        outgoing <- asks outgoingWS
-        liftIO (writeChan outgoing msg)
+        conn <- asks envConn
+        liftIO $ writeMessage msg conn
 
 class MonadDiscord m where
     receive :: m GatewayMessage
