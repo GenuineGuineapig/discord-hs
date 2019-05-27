@@ -1,8 +1,4 @@
 
-{-# language NumericUnderscores #-}
-{-# language OverloadedStrings #-}
-{-# language ScopedTypeVariables #-}
-
 module Discord.Client
     ( MonadDiscord(..)
     , Discord(..)

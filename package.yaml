@@ -5,12 +5,24 @@ license-file: LICENSE
 maintainer: Connor James
 github: cnr/discord-hs
 
-ghc-options: -Wall
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wpartial-fields
+  - -Wredundant-constraints
 dependencies:
   - base ^>=4.12.0.0
 
 default-extensions:
+  - DataKinds
   - GeneralizedNewtypeDeriving
+  - LambdaCase
+  - NumericUnderscores
+  - OverloadedStrings
+  - ScopedTypeVariables
 
 library:
   source-dirs: src

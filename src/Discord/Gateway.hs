@@ -1,8 +1,4 @@
 
-{-# language LambdaCase #-}
-{-# language OverloadedStrings #-}
-{-# language TypeApplications #-}
-
 module Discord.Gateway
     ( GatewayRequest(..)
     , GatewayMessage(..)

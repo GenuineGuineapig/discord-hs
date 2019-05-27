@@ -1,9 +1,4 @@
 
-{-# language AllowAmbiguousTypes #-}
-{-# language DataKinds #-}
-{-# language TypeApplications #-}
-{-# language OverloadedStrings #-}
-
 module Discord.Main where
 
 import           Control.Concurrent (threadDelay)
