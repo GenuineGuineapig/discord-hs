@@ -30,6 +30,7 @@ library:
     - Discord.Client
     - Discord.Gateway
     - Discord.Main
+    - Discord.Rest
     - Discord.Types
   dependencies:
     - aeson

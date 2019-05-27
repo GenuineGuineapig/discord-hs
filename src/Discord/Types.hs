@@ -1,6 +1,7 @@
 
 module Discord.Types
     ( Emoji(..)
+    , Embed(..)
     , Guild(..)
     , GuildMember(..)
     , Channel(..)
@@ -22,6 +23,9 @@ newtype Snowflake = Snowflake { unSnowflake :: Word64 } deriving Show
 
 instance FromJSON Snowflake where
     parseJSON = fmap (Snowflake . read) . parseJSON
+
+instance ToJSON Snowflake where
+    toJSON (Snowflake v) = toJSON (show v)
 
 data User = User -- TODO: remaining items
     { userId            :: Snowflake
@@ -164,6 +168,9 @@ data Embed = Embed deriving Show -- TODO
 
 instance FromJSON Embed where
     parseJSON = const (pure Embed)
+
+instance ToJSON Embed where
+    toJSON _ = object []
 
 data Reaction = Reaction deriving Show -- TODO
 

@@ -1,4 +1,6 @@
 
+{-# language GADTs #-}
+
 module Discord.Client
     ( Discord(..)
     , Env(..)
@@ -19,6 +21,7 @@ import           UnliftIO.Concurrent
 import           Wuss
 
 import           Discord.Gateway
+import           Discord.Rest
 
 
 type Handler = Event -> Discord ()
@@ -31,10 +34,20 @@ data ReconnectPolicy =
 
 startDiscord :: MonadIO m => ReconnectPolicy -> Token -> Handler -> m ()
 startDiscord policy token handler = liftIO $ do
-    -- TODO rest requests
-    gtid <- runGatewayClient policy token handler
+    requestChan <- newChan
 
-    threadDelay maxBound `finally` killThread gtid -- TODO
+    -- TODO rest requests
+    race_ (runGatewayClient policy token handler requestChan)
+          (runRestClient requestChan token)
+
+
+runRestClient :: Chan SomeRequest -> Token -> IO ()
+runRestClient requestChan token = forever $ do
+    SomeRequest req respVar <- readChan requestChan
+    putStrLn "found request"
+    resp <- runRequest req token
+    putMVar respVar resp
+    putStrLn "wrote response to var"
 
 login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do
@@ -58,11 +71,10 @@ receiveReady conn = do
         _ -> receiveReady conn -- TODO: exception? unexpected message
 
 
--- TODO: rate limits
-runGatewayClient :: ReconnectPolicy -> Token -> Handler -> IO ThreadId
-runGatewayClient policy token handler = forkWithUnmask $ \restore ->
+runGatewayClient :: ReconnectPolicy -> Token -> Handler -> Chan SomeRequest -> IO ThreadId
+runGatewayClient policy token handler requestChan =
     forever $ do
-        restore (runSecureClient "gateway.discord.gg" 443 "/" (discordClient token handler))
+        runSecureClient "gateway.discord.gg" 443 "/" (discordClient token handler requestChan)
             `catch` \(e :: SomeException) -> do
                 putStrLn ("Exception in gateway client: " <> show e)
                 case policy of
@@ -72,15 +84,15 @@ runGatewayClient policy token handler = forkWithUnmask $ \restore ->
         putStrLn "Lost connection. Reconnecting in 5 seconds..."
         threadDelay 5_000_000
 
-    where
-
-discordClient :: Token -> Handler -> WS.ClientApp ()
-discordClient token handler conn = do
+discordClient :: Token -> Handler -> Chan SomeRequest -> WS.ClientApp ()
+discordClient token handler requestChan conn = do
     heartbeatInterval <- login token conn
     sequenceRef       <- newIORef Nothing
 
+    let env = Env requestChan
+
     race_ (heartbeat sequenceRef heartbeatInterval)
-          (eventLoop sequenceRef)
+          (eventLoop sequenceRef env)
 
     where
 
@@ -90,16 +102,16 @@ discordClient token handler conn = do
         writeMessage (OutgoingHeartbeat currentSeq) conn
         threadDelay (heartbeatInterval * 1000)
 
-    eventLoop :: IORef (Maybe Int) -> IO ()
-    eventLoop sequenceRef = do
+    eventLoop :: IORef (Maybe Int) -> Env -> IO ()
+    eventLoop sequenceRef env = do
         msg <- readMessage conn
         case msg of
             HeartbeatAck -> pure ()
             Dispatch n event -> do
                 writeIORef sequenceRef (Just n)
-                runDiscord (handler event) (Env conn)
+                runDiscord (handler event) env
             t -> putStrLn ("UNHANDLED: " <> show t)
-        eventLoop sequenceRef
+        eventLoop sequenceRef env
 
 readMessage :: WS.ClientApp GatewayMessage
 readMessage conn = do
@@ -111,7 +123,10 @@ readMessage conn = do
 writeMessage :: GatewayRequest -> WS.ClientApp ()
 writeMessage msg conn = WS.sendTextData conn (encode msg)
 
-data Env = Env { envConn :: WS.Connection }
+data SomeRequest where
+    SomeRequest :: Request a -> MVar a -> SomeRequest
+
+data Env = Env { envRequests :: Chan SomeRequest }
 
 newtype Discord a = Discord { unDiscord :: ReaderT Env IO a } deriving (Functor, Applicative, Monad, MonadIO, MonadReader Env, MonadUnliftIO)
 
@@ -119,14 +134,11 @@ runDiscord :: Discord a -> Env -> IO a
 runDiscord action env = runReaderT (unDiscord action) env
 
 instance MonadDiscord Discord where
-    receive = do
-        conn <- asks envConn
-        liftIO $ readMessage conn
-    send msg = do
-        conn <- asks envConn
-        liftIO $ writeMessage msg conn
+    makeRequest req = do
+        result      <- newEmptyMVar
+        requestChan <- asks envRequests
+        writeChan requestChan (SomeRequest req result)
+        readMVar result
 
 class MonadDiscord m where
-    receive :: m GatewayMessage
-    send    :: GatewayRequest -> m ()
-    --sendRest    :: Request a -> m a
+    makeRequest :: Request a -> m a
