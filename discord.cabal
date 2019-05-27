@@ -31,5 +31,8 @@ executable discord
   build-depends:       base ^>=4.12.0.0,
                        discord
   hs-source-dirs:      app
+  other-modules:       Discord.Client,
+                       Discord.Gateway,
+                       Discord.Main
   main-is:             Main.hs
   default-language:    Haskell2010
