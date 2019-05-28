@@ -4,6 +4,7 @@
 module Discord.Rest
     ( CreateMessageRequest(..)
     , DiscordReq
+    , DiscordReqErr(..)
     , Request(..)
     , createMessage
     , runDiscordReq

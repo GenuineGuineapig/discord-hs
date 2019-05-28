@@ -35,6 +35,7 @@ library:
   dependencies:
     - aeson
     - bytestring
+    - case-insensitive
     - containers
     - http-client
     - http-types

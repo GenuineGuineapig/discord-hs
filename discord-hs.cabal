@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b0e07740a786975c94e4b9fd34d4b48fd248fc702c3f120c725c3e17f3f106a7
+-- hash: 1e8babb4fcdef4057e82cd6642a34709394fb8d4a7ff297f5f9f57f1d47443bd
 
 name:           discord-hs
 version:        0.1.0.0
@@ -36,6 +36,7 @@ library
       aeson
     , base >=4.12.0.0 && <4.13
     , bytestring
+    , case-insensitive
     , containers
     , http-client
     , http-types
