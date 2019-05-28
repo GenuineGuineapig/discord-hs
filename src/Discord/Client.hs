@@ -15,6 +15,9 @@ module Discord.Client
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as BL
 import           Control.Monad.Reader
+import           Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+import           Network.HTTP.Req
 import qualified Network.WebSockets as WS
 import           UnliftIO hiding (Handler)
 import           UnliftIO.Concurrent
@@ -22,6 +25,7 @@ import           Wuss
 
 import           Discord.Gateway
 import           Discord.Rest
+import           Discord.Types
 
 
 type Handler = Event -> Discord ()
@@ -41,13 +45,29 @@ startDiscord policy token handler = liftIO $ do
           (runRestClient requestChan token)
 
 
+emptyLimits :: RateLimits
+emptyLimits = RateLimits Nothing M.empty
+
+data RateLimits = RateLimits
+    { globalRateLimit :: Maybe Int
+    , majorRateLimit  :: Map Snowflake Int
+    }
+
 runRestClient :: Chan SomeRequest -> Token -> IO ()
-runRestClient requestChan token = forever $ do
-    SomeRequest req respVar <- readChan requestChan
-    putStrLn "found request"
-    resp <- runRequest req token
-    putMVar respVar resp
-    putStrLn "wrote response to var"
+runRestClient = go emptyLimits
+    where
+    go :: RateLimits -> Chan SomeRequest -> Token -> IO ()
+    go limits requestChan token = do
+        SomeRequest request respVar <- readChan requestChan
+
+        let major = requestMajor
+
+        resp <- runDiscordReq (requestToReq request token)
+        case resp of
+            Left err  -> undefined -- TODO
+            Right val -> putMVar respVar (responseBody val)
+
+        go limits requestChan token
 
 login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do
@@ -124,7 +144,7 @@ writeMessage :: GatewayRequest -> WS.ClientApp ()
 writeMessage msg conn = WS.sendTextData conn (encode msg)
 
 data SomeRequest where
-    SomeRequest :: Request a -> MVar a -> SomeRequest
+    SomeRequest :: FromJSON a => Request a -> MVar a -> SomeRequest
 
 data Env = Env { envRequests :: Chan SomeRequest }
 
@@ -134,11 +154,11 @@ runDiscord :: Discord a -> Env -> IO a
 runDiscord action env = runReaderT (unDiscord action) env
 
 instance MonadDiscord Discord where
-    makeRequest req = do
+    makeRequest request = do
         result      <- newEmptyMVar
         requestChan <- asks envRequests
-        writeChan requestChan (SomeRequest req result)
+        writeChan requestChan (SomeRequest request result)
         readMVar result
 
 class MonadDiscord m where
-    makeRequest :: Request a -> m a
+    makeRequest :: FromJSON a => Request a -> m a
