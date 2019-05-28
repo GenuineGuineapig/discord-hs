@@ -1,6 +1,4 @@
 
-{-# language GADTs #-}
-
 module Discord.Client
     ( Discord(..)
     , Env(..)
@@ -83,11 +81,6 @@ waitForRateLimits limits major = do
     -- clean old snowflake limits
     modifyIORef (majorRateLimits limits) (M.filter (> currentTime))
 
---   http.client
--- responseHeaders :: Response _ -> [Header]
--- type Header = (CI ByteString, ByteString)
---   req
--- responseHeader :: response -> ByteString -> Maybe ByteString
 
 recordLimits :: (ByteString -> Maybe ByteString) -- function to extract headers
              -> (Maybe Snowflake) -> RateLimits -> IO ()

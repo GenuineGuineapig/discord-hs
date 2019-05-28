@@ -18,6 +18,7 @@ dependencies:
 
 default-extensions:
   - DataKinds
+  - GADTs
   - GeneralizedNewtypeDeriving
   - LambdaCase
   - NumericUnderscores

@@ -1,6 +1,4 @@
 
-{-# language GADTs #-}
-
 module Discord.Rest
     ( CreateMessageRequest(..)
     , DiscordReq
@@ -26,13 +24,6 @@ import Discord.Types
 baseUrl :: Url 'Https
 baseUrl = https "discordapp.com" /: "api" /: "v6"
 
-
--- content	string	the message contents (up to 2000 characters)
--- nonce	snowflake	a nonce that can be used for optimistic message sending
--- tts	boolean	true if this is a TTS message
--- file	file contents	the contents of the file being sent
--- embed	embed object	embedded rich content
--- payload_json	string	JSON encoded body of any additional request fields.
 
 data CreateMessageRequest = CreateMessageRequest -- TODO
     { createMessageContent :: Text
