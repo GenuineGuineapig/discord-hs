@@ -19,7 +19,7 @@ import Data.Aeson
 import Data.Text (Text)
 import Data.Word
 
-newtype Snowflake = Snowflake { unSnowflake :: Word64 } deriving Show
+newtype Snowflake = Snowflake { unSnowflake :: Word64 } deriving (Eq, Ord, Show)
 
 instance FromJSON Snowflake where
     parseJSON = fmap (Snowflake . read) . parseJSON

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 16be14096090caf0dedf2e6a11651e62ec2655a6c509a9afe82a8d3e729bba98
+-- hash: b0e07740a786975c94e4b9fd34d4b48fd248fc702c3f120c725c3e17f3f106a7
 
 name:           discord-hs
 version:        0.1.0.0
@@ -44,6 +44,7 @@ library
     , network
     , req
     , text
+    , time
     , unliftio
     , websockets
     , wuss

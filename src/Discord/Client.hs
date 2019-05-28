@@ -17,6 +17,8 @@ import qualified Data.ByteString.Lazy as BL
 import           Control.Monad.Reader
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
+import           Data.Maybe (fromMaybe)
+import           Data.Time.Clock.POSIX (getPOSIXTime)
 import           Network.HTTP.Req
 import qualified Network.WebSockets as WS
 import           UnliftIO hiding (Handler)
@@ -29,7 +31,6 @@ import           Discord.Types
 
 
 type Handler = Event -> Discord ()
-
 
 data ReconnectPolicy =
     ReconnectAlways
@@ -45,29 +46,53 @@ startDiscord policy token handler = liftIO $ do
           (runRestClient requestChan token)
 
 
-emptyLimits :: RateLimits
-emptyLimits = RateLimits Nothing M.empty
+newLimits :: IO RateLimits
+newLimits = RateLimits <$> newIORef 0 <*> newIORef M.empty
 
+type EpochSeconds = Int
+
+-- EpochSeconds values represent when the rate limit will expire
 data RateLimits = RateLimits
-    { globalRateLimit :: Maybe Int
-    , majorRateLimit  :: Map Snowflake Int
+    { globalRateLimit :: IORef EpochSeconds
+    , majorRateLimits  :: IORef (Map Snowflake EpochSeconds)
     }
 
+getCurrentTimeEpochSeconds :: IO Int
+getCurrentTimeEpochSeconds = round <$> getPOSIXTime
+
+-- threadDelay until the applicable rate limits expire
+waitForRateLimits :: RateLimits -> Maybe Snowflake -> IO ()
+waitForRateLimits limits major = do
+    globalLimit <- readIORef (globalRateLimit limits)
+    majorLimits <- readIORef (majorRateLimits limits)
+
+    let majorLimit  = flip M.lookup majorLimits =<< major
+        latestLimit = foldr max globalLimit majorLimit
+
+    currentTime <- getCurrentTimeEpochSeconds
+
+    when (latestLimit > currentTime)
+        (threadDelay ((latestLimit - currentTime) * 1_000_000))
+
+    -- clean old snowflake limits
+    modifyIORef (majorRateLimits limits) (M.filter (> currentTime))
+
+
 runRestClient :: Chan SomeRequest -> Token -> IO ()
-runRestClient = go emptyLimits
-    where
-    go :: RateLimits -> Chan SomeRequest -> Token -> IO ()
-    go limits requestChan token = do
+runRestClient requestChan token = do
+    limits <- newLimits
+
+    forever $ do
         SomeRequest request respVar <- readChan requestChan
 
-        let major = requestMajor
+        waitForRateLimits limits (requestMajor request)
+
+        -- make sure that making the request wouldn't exceed our rate limit
 
         resp <- runDiscordReq (requestToReq request token)
         case resp of
             Left err  -> undefined -- TODO
             Right val -> putMVar respVar (responseBody val)
-
-        go limits requestChan token
 
 login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do

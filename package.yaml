@@ -43,6 +43,7 @@ library:
     - network
     - req
     - text
+    - time
     - unliftio
     - websockets
     - wuss
