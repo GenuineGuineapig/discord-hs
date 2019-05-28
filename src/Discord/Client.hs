@@ -14,7 +14,6 @@ import           Data.Aeson
 import qualified Data.ByteString.Lazy as BL
 import           Control.Applicative ((<|>))
 import           Control.Monad.Reader
-import           Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS8
 import           Data.CaseInsensitive
 import           Data.Maybe (fromMaybe)
@@ -43,10 +42,11 @@ data ReconnectPolicy =
 startDiscord :: MonadIO m => ReconnectPolicy -> Token -> Handler -> m ()
 startDiscord policy token handler = liftIO $ do
     requestChan <- newChan
+    limits      <- newLimits
 
     -- TODO rest requests
     race_ (runGatewayClient policy token handler requestChan)
-          (runRestClient requestChan token)
+          (runRestClient limits requestChan token)
 
 
 newLimits :: IO RateLimits
@@ -82,12 +82,13 @@ waitForRateLimits limits major = do
     modifyIORef (majorRateLimits limits) (M.filter (> currentTime))
 
 
-recordLimits :: (ByteString -> Maybe ByteString) -- function to extract headers
-             -> (Maybe Snowflake) -> RateLimits -> IO ()
-recordLimits getHeader major limits = do
+recordLimits :: RateLimits -> (Maybe Snowflake) -> HC.Response a -> IO ()
+recordLimits limits major response = do
     currentTimeSeconds <- getCurrentTimeEpochSeconds
 
-    let isGlobal      = maybe False (== "true") (getHeader "X-RateLimit-Global")
+    let getHeader bs = lookup (mk bs) (HC.responseHeaders response)
+
+        isGlobal      = maybe False (== "true") (getHeader "X-RateLimit-Global")
         noneRemaining = maybe True  (== "0")    (getHeader "X-RateLimit-Remaining")
 
         retryAfter = read . BS8.unpack <$> getHeader "Retry-After"       :: Maybe Int
@@ -101,29 +102,30 @@ recordLimits getHeader major limits = do
             (False, Just m) -> modifyIORef (majorRateLimits limits) (M.insert m limitTime)
             (_    , _     ) -> error "missing major for rate limit"
 
-headerLookupHC :: HC.Response a -> (ByteString -> Maybe ByteString)
-headerLookupHC resp bs = lookup (mk bs) (HC.responseHeaders resp)
-
-runRestClient :: Chan SomeRequest -> Token -> IO ()
-runRestClient requestChan token = do
-    limits <- newLimits
-
-    forever (execRequest limits =<< readChan requestChan)
+runRestClient :: RateLimits -> Chan SomeRequest -> Token -> IO ()
+runRestClient limits requestChan token = forever (execRequest =<< readChan requestChan)
 
     where
 
-    execRequest :: RateLimits -> SomeRequest -> IO ()
-    execRequest limits raw@(SomeRequest request respVar) = do
+    execRequest :: SomeRequest -> IO ()
+    execRequest raw@(SomeRequest request respVar) = do
         let major = requestMajor request
 
         waitForRateLimits limits major
 
         result <- runDiscordReq (requestToReq request token)
+
+        case result of
+            Left err -> case err of
+                RateLimited resp -> recordLimits limits major resp
+                ServerError resp -> recordLimits limits major resp
+            Right resp -> recordLimits limits major (toVanillaResponse resp)
+
         case result of
             Left err  -> case err of
-                RateLimited resp -> recordLimits (headerLookupHC resp) major limits >> execRequest limits raw
-                ServerError _    -> threadDelay 5_000_000 >> execRequest limits raw -- TODO: print server error?
-            Right resp -> recordLimits (responseHeader resp) major limits >> putMVar respVar (responseBody resp)
+                RateLimited _ -> execRequest raw -- retry now that we've updated limits
+                ServerError _ -> threadDelay 5_000_000 >> execRequest raw -- TODO: print server error?
+            Right resp -> putMVar respVar (responseBody resp)
 
 login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do
