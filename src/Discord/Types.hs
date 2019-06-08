@@ -159,18 +159,205 @@ instance FromJSON WebhookUser where
                     <*> obj .:  "username"
                     <*> obj .:? "avatar"
 
-data Attachment = Attachment deriving Show -- TODO
+data Attachment = Attachment
+    { attachmentId       :: Snowflake
+    , attachmentFilename :: Text
+    , attachmentSize     :: Int
+    , attachmentUrl      :: Text
+    , attachmentProxyUrl :: Text
+    , attachmentHeight   :: Maybe Int
+    , attachmentWidth    :: Maybe Int
+    } deriving Show
 
 instance FromJSON Attachment where
-    parseJSON = const (pure Attachment)
+    parseJSON = withObject "Attachment" $ \obj ->
+        Attachment <$> obj .:  "id"
+                   <*> obj .:  "filename"
+                   <*> obj .:  "size"
+                   <*> obj .:  "url"
+                   <*> obj .:  "proxy_url"
+                   <*> obj .:? "height"
+                   <*> obj .:? "width"
 
-data Embed = Embed deriving Show -- TODO
+data Embed = Embed
+    { embedTitle       :: Maybe Text
+    , embedType        :: Maybe Text
+    , embedDescription :: Maybe Text
+    , embedUrl         :: Maybe Text
+    , embedTimestamp   :: Maybe Text -- TODO: timestamp
+    , embedColor       :: Maybe Int -- TODO: rgb?
+    , embedFooter      :: Maybe EmbedFooter
+    , embedImage       :: Maybe EmbedImage
+    , embedThumbnail   :: Maybe EmbedThumbnail
+    , embedVideo       :: Maybe EmbedVideo
+    , embedProvider    :: Maybe EmbedProvider
+    , embedAuthor      :: Maybe EmbedAuthor
+    , embedFields      :: Maybe [EmbedField]
+    } deriving Show
 
 instance FromJSON Embed where
-    parseJSON = const (pure Embed)
+    parseJSON = withObject "Embed" $ \obj ->
+        Embed <$> obj .:? "title"
+              <*> obj .:? "type"
+              <*> obj .:? "description"
+              <*> obj .:? "url"
+              <*> obj .:? "timestamp"
+              <*> obj .:? "color"
+              <*> obj .:? "footer"
+              <*> obj .:? "image"
+              <*> obj .:? "thumbnail"
+              <*> obj .:? "video"
+              <*> obj .:? "provider"
+              <*> obj .:? "author"
+              <*> obj .:? "fields"
 
 instance ToJSON Embed where
-    toJSON _ = object []
+    toJSON p = object [ "title"       .= embedTitle p
+                      , "type"        .= embedType p
+                      , "description" .= embedDescription p
+                      , "url"         .= embedUrl p
+                      , "timestamp"   .= embedTimestamp p
+                      , "color"       .= embedColor p
+                      , "footer"      .= embedFooter p
+                      , "image"       .= embedImage p
+                      , "thumbnail"   .= embedThumbnail p
+                      , "video"       .= embedVideo p
+                      , "provider"    .= embedProvider p
+                      , "author"      .= embedAuthor p
+                      , "fields"      .= embedFields p
+                      ]
+
+data EmbedFooter = EmbedFooter
+    { embedFooterText         :: Text
+    , embedFooterIconUrl      :: Maybe Text
+    , embedFooterProxyIconUrl :: Maybe Text
+    } deriving Show
+
+instance FromJSON EmbedFooter where
+    parseJSON = withObject "EmbedFooter" $ \obj ->
+        EmbedFooter <$> obj .:  "text"
+                    <*> obj .:? "icon_url"
+                    <*> obj .:? "proxy_icon_url"
+
+instance ToJSON EmbedFooter where
+    toJSON p = object [ "text"           .= embedFooterText p
+                      , "icon_url"       .= embedFooterIconUrl p
+                      , "proxy_icon_url" .= embedFooterProxyIconUrl p
+                      ]
+
+data EmbedImage = EmbedImage
+    { embedImageUrl      :: Maybe Text
+    , embedImageProxyUrl :: Maybe Text
+    , embedImageHeight   :: Maybe Int
+    , embedImageWidth    :: Maybe Int
+    } deriving Show
+
+instance FromJSON EmbedImage where
+    parseJSON = withObject "EmbedImage" $ \obj ->
+        EmbedImage <$> obj .:? "url"
+                   <*> obj .:? "proxy_url"
+                   <*> obj .:? "height"
+                   <*> obj .:? "width"
+
+instance ToJSON EmbedImage where
+    toJSON p = object [ "url"       .= embedImageUrl p
+                      , "proxy_url" .= embedImageProxyUrl p
+                      , "height"    .= embedImageHeight p
+                      , "width"     .= embedImageWidth p
+                      ]
+
+data EmbedThumbnail = EmbedThumbnail
+    { embedThumbnailUrl      :: Maybe Text
+    , embedThumbnailProxyUrl :: Maybe Text
+    , embedThumbnailHeight   :: Maybe Int
+    , embedThumbnailWidth    :: Maybe Int
+    } deriving Show
+
+instance FromJSON EmbedThumbnail where
+    parseJSON = withObject "EmbedThumbnail" $ \obj ->
+        EmbedThumbnail <$> obj .:? "url"
+                       <*> obj .:? "proxy_url"
+                       <*> obj .:? "height"
+                       <*> obj .:? "width"
+
+instance ToJSON EmbedThumbnail where
+    toJSON p = object [ "url"       .= embedThumbnailUrl p
+                      , "proxy_url" .= embedThumbnailProxyUrl p
+                      , "height"    .= embedThumbnailHeight p
+                      , "width"     .= embedThumbnailWidth p
+                      ]
+
+data EmbedVideo = EmbedVideo
+    { embedVideoUrl    :: Maybe Text
+    , embedVideoHeight :: Maybe Int
+    , embedVideoWidth  :: Maybe Int
+    } deriving Show
+
+instance FromJSON EmbedVideo where
+    parseJSON = withObject "EmbedVideo" $ \obj ->
+        EmbedVideo <$> obj .:? "url"
+                   <*> obj .:? "height"
+                   <*> obj .:? "width"
+
+instance ToJSON EmbedVideo where
+    toJSON p = object [ "url"    .= embedVideoUrl p
+                      , "height" .= embedVideoHeight p
+                      , "width"  .= embedVideoWidth p
+                      ]
+
+data EmbedProvider = EmbedProvider
+    { embedProviderName :: Maybe Text
+    , embedProviderUrl  :: Maybe Text
+    } deriving Show
+
+instance FromJSON EmbedProvider where
+    parseJSON = withObject "EmbedProvider" $ \obj ->
+        EmbedProvider <$> obj .:? "name"
+                      <*> obj .:? "url"
+
+instance ToJSON EmbedProvider where
+    toJSON p = object [ "name" .= embedProviderName p
+                      , "url"  .= embedProviderUrl p
+                      ]
+
+data EmbedAuthor = EmbedAuthor
+    { embedAuthorName         :: Maybe Text
+    , embedAuthorUrl          :: Maybe Text
+    , embedAuthorIconUrl      :: Maybe Text
+    , embedAuthorProxyIconUrl :: Maybe Text
+    } deriving Show
+
+instance FromJSON EmbedAuthor where
+    parseJSON = withObject "EmbedAuthor" $ \obj ->
+        EmbedAuthor <$> obj .:? "name"
+                    <*> obj .:? "url"
+                    <*> obj .:? "icon_url"
+                    <*> obj .:? "proxy_icon_url"
+
+instance ToJSON EmbedAuthor where
+    toJSON p = object [ "name"           .= embedAuthorName p
+                      , "url"            .= embedAuthorUrl p
+                      , "icon_url"       .= embedAuthorIconUrl p
+                      , "proxy_icon_url" .= embedAuthorProxyIconUrl p
+                      ]
+
+data EmbedField = EmbedField
+    { embedFieldName :: Text
+    , embedFieldValue :: Text
+    , embedFieldInline :: Maybe Bool
+    } deriving Show
+
+instance FromJSON EmbedField where
+    parseJSON = withObject "EmbedField" $ \obj ->
+        EmbedField <$> obj .:  "name"
+                   <*> obj .:  "value"
+                   <*> obj .:? "inline"
+
+instance ToJSON EmbedField where
+    toJSON p = object [ "name"   .= embedFieldName p
+                      , "value"  .= embedFieldValue p
+                      , "inline" .= embedFieldInline p
+                      ]
 
 data Reaction = Reaction deriving Show -- TODO
 
