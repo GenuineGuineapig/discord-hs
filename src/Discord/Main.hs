@@ -9,10 +9,10 @@ import           Network.Socket (withSocketsDo)
 import Discord
 import Discord.Rest.Channel
 
-printEvents :: Handler Discord
+printEvents :: Event -> Discord ()
 printEvents = liftIO . print
 
-pongBot :: Handler Discord
+pongBot :: Event -> Discord ()
 pongBot = \case
   -- if message is "ping", send message to channel saying "pong"
     MessageCreate msg -> when (messageContent msg == "ping") $ do

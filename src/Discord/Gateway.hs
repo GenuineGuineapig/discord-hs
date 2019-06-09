@@ -1,7 +1,6 @@
 
 module Discord.Gateway
-    ( Handler
-    , HasIncomingEvents(..)
+    ( HasIncomingEvents(..)
     , startGateway
     )
     where
@@ -25,7 +24,7 @@ class HasIncomingEvents e where
 instance HasIncomingEvents (Chan Event) where
     incomingEventsL = id
 
-startGateway :: (HasToken e, HasIncomingEvents e, MonadReader e m, MonadUnliftIO m) => ReconnectPolicy -> Handler m -> m ()
+startGateway :: (HasToken e, HasIncomingEvents e, MonadReader e m, MonadUnliftIO m) => ReconnectPolicy -> (Event -> m ()) -> m ()
 startGateway policy handler = do
     incoming <- view incomingEventsL
 

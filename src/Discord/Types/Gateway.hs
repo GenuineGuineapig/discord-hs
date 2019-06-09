@@ -4,7 +4,6 @@ module Discord.Types.Gateway
     , Event(..)
     , GatewayRequest(..)
     , GatewayMessage(..)
-    , Handler
     , ReconnectPolicy(..)
     , Token(..)
     )
@@ -17,8 +16,6 @@ import Data.Text (Text)
 
 import Discord.Types.Common
 
-
-type Handler m = Event -> m ()
 
 data ReconnectPolicy =
     ReconnectAlways
