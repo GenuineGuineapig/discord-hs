@@ -86,11 +86,11 @@ data Event =
   | ChannelPinsUpdate (Maybe Snowflake) {- guild id -} Snowflake Text
 
   | MessageCreate Message
-  | MessageUpdate -- TODO
+  | MessageUpdate Message
   | MessageDelete Snowflake Snowflake (Maybe Snowflake) {- message, channel, guild -}
   | MessageDeleteBulk [Snowflake] Snowflake (Maybe Snowflake) {- messages, channel, guild -}
-  | MessageReactionAdd Snowflake Snowflake Snowflake (Maybe Snowflake) {- user, channel, message, guild, TODO: PARTIAL Emoji FFS -}
-  | MessageReactionRemove Snowflake Snowflake Snowflake (Maybe Snowflake) {- user, channel, message, guild, TODO: PARTIAL Emoji FFS -}
+  | MessageReactionAdd Snowflake Snowflake Snowflake (Maybe Snowflake) Emoji {- user, channel, message, guild, emoji -}
+  | MessageReactionRemove Snowflake Snowflake Snowflake (Maybe Snowflake) Emoji {- user, channel, message, guild, emoji -}
   | MessageReactionRemoveAll Snowflake Snowflake (Maybe Snowflake) {- channel, message, guild -}
 
   | PresenceUpdate
@@ -130,12 +130,12 @@ eventFromJSON = \case
     "CHANNEL_PINS_UPDATE" -> withObject "ChannelPinsUpdate" $ \obj -> ChannelPinsUpdate <$> obj .:? "guild_id" <*> obj .: "channel_id" <*> obj .: "timestamp"
 
     "MESSAGE_CREATE"      -> fmap MessageCreate . parseJSON
-    "MESSAGE_UPDATE"      -> const (pure MessageUpdate) -- TODO: this has a PARTIAL message..
+    "MESSAGE_UPDATE"      -> fmap MessageUpdate . parseJSON -- TODO: this is only guaranteed to have the "id" and "channel_id" fields
     "MESSAGE_DELETE"      -> withObject "MessageDelete"         $ \obj -> MessageDelete         <$> obj .: "id"      <*> obj .: "channel_id" <*> obj .:? "guild_id"
     "MESSAGE_DELETE_BULK" -> withObject "MessageDeleteBulk"     $ \obj -> MessageDeleteBulk     <$> obj .: "ids"     <*> obj .: "channel_id" <*> obj .:? "guild_id"
 
-    "MESSAGE_REACTION_ADD"        -> withObject "MessageReactionAdd"       $ \obj -> MessageReactionAdd       <$> obj .: "user_id" <*> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id" -- <*> obj .: "emoji" TODO PARTIAL EMOJI
-    "MESSAGE_REACTION_REMOVE"     -> withObject "MessageReactionRemove"    $ \obj -> MessageReactionRemove    <$> obj .: "user_id" <*> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id" -- <*> obj .: "emoji" TODO PARTIAL EMOJI
+    "MESSAGE_REACTION_ADD"        -> withObject "MessageReactionAdd"       $ \obj -> MessageReactionAdd       <$> obj .: "user_id" <*> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id" <*> obj .: "emoji"
+    "MESSAGE_REACTION_REMOVE"     -> withObject "MessageReactionRemove"    $ \obj -> MessageReactionRemove    <$> obj .: "user_id" <*> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id" <*> obj .: "emoji"
     "MESSAGE_REACTION_REMOVE_ALL" -> withObject "MessageReactionRemoveAll" $ \obj -> MessageReactionRemoveAll <$> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id"
 
     "PRESENCE_UPDATE" -> const (pure PresenceUpdate) -- TODO

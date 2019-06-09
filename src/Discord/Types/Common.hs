@@ -19,6 +19,7 @@ module Discord.Types.Common
 import Control.Lens (Lens')
 import Control.Applicative ((<|>))
 import Data.Aeson
+import Data.Aeson.Types (Parser)
 import Data.String (IsString)
 import Data.Text (Text)
 import Data.Word
@@ -80,7 +81,7 @@ instance FromJSON Channel where
     parseJSON = withObject  "Channel" $ \obj ->
         Channel <$> obj .:  "id"
                 <*> obj .:  "type"
-                <*> obj .:  "guild_id"
+                <*> obj .:? "guild_id"
                 <*> obj .:? "position"
                 <*> obj .:? "name"
                 <*> obj .:? "topic"
@@ -106,7 +107,7 @@ data Guild = Guild
     } deriving Show
 
 instance FromJSON Guild where
-    parseJSON = withObject "Guild" $ \obj -> 
+    parseJSON = withObject "Guild" $ \obj ->
         Guild <$> obj .:  "id"
               <*> obj .:  "name"
               <*> obj .:  "icon"
@@ -146,8 +147,7 @@ instance FromJSON Emoji where
               <*> obj .:? "animated"
 
 data GuildMember = GuildMember
-    { guildMemberUser     :: User
-    , guildMemberNick     :: Maybe Text
+    { guildMemberNick     :: Maybe Text
     , guildMemberRoles    :: [Snowflake]
     , guildMemberJoinedAt :: Text -- TODO: timestamp
     , guildMemberDeaf     :: Bool
@@ -156,8 +156,7 @@ data GuildMember = GuildMember
 
 instance FromJSON GuildMember where
     parseJSON = withObject "GuildMember" $ \obj ->
-        GuildMember <$> obj .:  "user"
-                    <*> obj .:? "nick"
+        GuildMember <$> obj .:? "nick"
                     <*> obj .:  "roles"
                     <*> obj .:  "joined_at"
                     <*> obj .:  "deaf"
@@ -401,13 +400,13 @@ data Message = Message
     , messageChannelId       :: Snowflake
     , messageGuildId         :: Maybe Snowflake
     , messageAuthor          :: Either User WebhookUser
---    , member :: PARTIAL GuildMember TODO ugh
+    , messageGuildMember     :: Maybe GuildMember
     , messageContent         :: Text
     , messageTimestamp       :: Text
     , messageEditedTimestamp :: Maybe Text
     , messageTts             :: Bool
     , messageMentionEveryone :: Bool
-    , messageMentions        :: [User] -- TODO: these also have a partial "member" GuildMember field :rolling_eyes:
+    , messageMentions        :: [(User, Maybe GuildMember)]
     , messageMentionRoles    :: [Snowflake]
     , messageAttachments     :: [Attachment]
     , messageEmbeds          :: [Embed]
@@ -426,13 +425,13 @@ instance FromJSON Message where
                 <*> obj .:  "channel_id"
                 <*> obj .:? "guild_id"
                 <*> (fmap Left (obj .: "author") <|> fmap Right (obj .: "author")) -- could be a user OR a webhook..
-                -- <*> obj .:? "member" -- PARTIAL WTF
+                <*> obj .:? "member"
                 <*> obj .:  "content"
                 <*> obj .:  "timestamp"
                 <*> obj .:? "edited_timestamp"
                 <*> obj .:  "tts"
                 <*> obj .:  "mention_everyone"
-                <*> obj .:  "mentions"
+                <*> ((obj .: "mentions") >>= traverse parseUserWithMember)
                 <*> obj .:  "mention_roles"
                 <*> obj .:  "attachments"
                 <*> obj .:  "embeds"
@@ -443,3 +442,9 @@ instance FromJSON Message where
                 <*> obj .:  "type"
                 <*> obj .:? "activity"
                 <*> obj .:? "application"
+
+parseUserWithMember :: Value -> Parser (User, Maybe GuildMember)
+parseUserWithMember val = do
+    user   <- parseJSON val
+    member <- withObject "UserWithMember" (.:? "member") val
+    pure (user, member)
