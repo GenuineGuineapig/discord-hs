@@ -9,10 +9,11 @@ module Discord.Types.Gateway
     )
     where
 
-import Data.Aeson
-import Data.Aeson.Types
-import Data.String (IsString)
-import Data.Text (Text)
+import           Data.Aeson
+import           Data.Aeson.Types
+import           Data.String (IsString)
+import           Data.Text (Text)
+import qualified Data.Text as T
 
 import Discord.Types.Common
 
@@ -24,12 +25,12 @@ data ReconnectPolicy =
 
 -- Gateway requests
 
-data GatewayRequest = Identify Token ConnectionProps {- TODO Compression, Large threshold, Shard, Presence -} 
-                    | Resume -- TODO
+data GatewayRequest = Identify Token ConnectionProps (Maybe Bool) (Maybe Int) (Maybe [Int]) (Maybe Presence) {- token, props, compress, large threshold, shard, presence -}
+                    | Resume Token Text Int {- token, session ID, last sequence number received-}
                     | OutgoingHeartbeat (Maybe Int)
-                    | RequestGuildMembers -- TODO
-                    | UpdateVoiceState -- TODO
-                    | UpdateStatus -- TODO
+                    | RequestGuildMembers [Snowflake] Text Int {- guilds, query (prefix), limit -}
+                    | UpdateVoiceState Snowflake (Maybe Snowflake) Bool Bool {- guild, channel, mute, deaf -}
+                    | UpdateStatus Presence
                     deriving Show
 
 
@@ -44,25 +45,28 @@ instance ToJSON ConnectionProps where
 
 instance ToJSON GatewayRequest where
     toJSON = \case
-        OutgoingHeartbeat s  -> gatewayReq 1 $ maybe Null (Number . fromIntegral) s
-        Identify token props -> gatewayReq 2 $ object ["token" .= token, "properties" .= props]
-        r -> error ("unimplemented gateway request" <> show r)
+        OutgoingHeartbeat s                                -> gatewayReq 1 $ maybe Null (Number . fromIntegral) s
+        Identify token props compress large shard presence -> gatewayReq 2 $ object $ filter (\(_,v) -> v /= Null) ["token" .= token, "properties" .= props, "compress" .= compress, "large_threshold" .= large, "shard" .= shard, "presence" .= presence]
+        UpdateStatus presence                              -> gatewayReq 3 $ toJSON presence
+        UpdateVoiceState guild channel mute deaf           -> gatewayReq 4 $ object ["guild_id" .= guild, "channel_id" .= channel, "self_mute" .= mute, "self_deaf" .= deaf]
+        Resume token sessionId msgId                       -> gatewayReq 6 $ object ["token" .= token, "session_id" .= sessionId, "seq" .= msgId]
+        RequestGuildMembers guild query limit              -> gatewayReq 8 $ object ["guild_id" .= guild, "query" .= query, "limit" .= limit]
 
 
 -- Gateway messages
 
 data GatewayMessage = Dispatch Int Event
-                    | IncomingHeartbeat -- TODO
-                    | Reconnect -- TODO
+                    | IncomingHeartbeat
+                    | Reconnect
                     | InvalidSession Bool -- whether it's resumable
-                    | Hello Int {- TODO trace -}
+                    | Hello Int
                     | HeartbeatAck
                     deriving Show
 
 newtype SessionId = SessionId { unSessionId :: Text } deriving (FromJSON, IsString, Show)
 
 data Event =
-    Ready User {- TODO private channels -} [UnavailableGuild] SessionId {- TODO trace and shard -}
+    Ready User [Channel] [UnavailableGuild] SessionId (Maybe [Int]) {- user, private channels, guilds, session, shard info -}
   | Resumed
 
   | GuildCreate Guild
@@ -93,7 +97,7 @@ data Event =
   | MessageReactionRemove Snowflake Snowflake Snowflake (Maybe Snowflake) Emoji {- user, channel, message, guild, emoji -}
   | MessageReactionRemoveAll Snowflake Snowflake (Maybe Snowflake) {- channel, message, guild -}
 
-  | PresenceUpdate
+  | PresenceUpdate Value [Snowflake] (Maybe Activity) Snowflake Status [Activity] ClientStatus {- user, roles, game, guild_id, status, activities, client_status -}
   | TypingStart Snowflake (Maybe Snowflake) Snowflake Int {- channel. guild, user, timestamp in seconds -}
   | UserUpdate User
 
@@ -106,7 +110,7 @@ data Event =
 
 eventFromJSON :: String -> Value -> Parser Event
 eventFromJSON = \case
-    "READY"   -> withObject "Ready" $ \obj -> Ready <$> obj .: "user" <*> obj .: "guilds" <*> obj .: "session_id"
+    "READY"   -> withObject "Ready" $ \obj -> Ready <$> obj .: "user" <*> obj .: "private_channels" <*> obj .: "guilds" <*> obj .: "session_id" <*> obj .:? "shard"
     "RESUMED" -> const (pure Resumed)
 
     "GUILD_CREATE"              -> fmap GuildCreate . parseJSON
@@ -130,7 +134,7 @@ eventFromJSON = \case
     "CHANNEL_PINS_UPDATE" -> withObject "ChannelPinsUpdate" $ \obj -> ChannelPinsUpdate <$> obj .:? "guild_id" <*> obj .: "channel_id" <*> obj .: "timestamp"
 
     "MESSAGE_CREATE"      -> fmap MessageCreate . parseJSON
-    "MESSAGE_UPDATE"      -> fmap MessageUpdate . parseJSON -- TODO: this is only guaranteed to have the "id" and "channel_id" fields
+    "MESSAGE_UPDATE"      -> fmap MessageUpdate . parseJSON
     "MESSAGE_DELETE"      -> withObject "MessageDelete"         $ \obj -> MessageDelete         <$> obj .: "id"      <*> obj .: "channel_id" <*> obj .:? "guild_id"
     "MESSAGE_DELETE_BULK" -> withObject "MessageDeleteBulk"     $ \obj -> MessageDeleteBulk     <$> obj .: "ids"     <*> obj .: "channel_id" <*> obj .:? "guild_id"
 
@@ -138,7 +142,7 @@ eventFromJSON = \case
     "MESSAGE_REACTION_REMOVE"     -> withObject "MessageReactionRemove"    $ \obj -> MessageReactionRemove    <$> obj .: "user_id" <*> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id" <*> obj .: "emoji"
     "MESSAGE_REACTION_REMOVE_ALL" -> withObject "MessageReactionRemoveAll" $ \obj -> MessageReactionRemoveAll <$> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id"
 
-    "PRESENCE_UPDATE" -> const (pure PresenceUpdate) -- TODO
+    "PRESENCE_UPDATE" -> withObject "PresenceUpdate" $ \obj -> PresenceUpdate <$> obj .: "user" <*> obj .: "roles" <*> obj .:? "game" <*> obj .: "guild_id" <*> obj .: "status" <*> obj .: "activities" <*> obj .: "client_status"
     "TYPING_START"    -> withObject "TypingStart" $ \obj -> TypingStart <$> obj .: "channel_id" <*> obj .:? "guild_id" <*> obj .: "user_id" <*> obj .: "timestamp"
     "USER_UPDATE"     -> fmap UserUpdate . parseJSON
 
@@ -148,18 +152,66 @@ eventFromJSON = \case
     "WEBHOOKS_UPDATE" -> withObject "WebhooksUpdate" $ \obj -> WebhooksUpdate <$> obj .: "guild_id" <*> obj .: "channel_id"
     t -> error ("unimplemented event type: " <> t)
 
-
 instance FromJSON GatewayMessage where
     parseJSON = withObject "Payload" $ \obj -> do
-        op      <- obj .: "op" -- :: Parser Int TODO why isn't Parser in scope
+        op      <- obj .: "op" :: Parser Int
         rawData <- obj .: "d"
         case op of
             0  -> do
                 eventType <- obj .: "t"
                 Dispatch <$> obj .: "s" <*> eventFromJSON eventType rawData
-            1  -> fail "Heartbeat unimplemented"
-            7  -> fail "Reconnect unimplemented"
+            1  -> pure IncomingHeartbeat
+            7  -> pure Reconnect
             9  -> withBool "InvalidSession" (pure . InvalidSession) rawData
             10 -> withObject "Hello" (\data' -> Hello <$> data' .: "heartbeat_interval") rawData
             11 -> pure HeartbeatAck
             _  -> fail ("unknown opcode " <> show (op :: Int)) -- todo why isn't Parser in scope
+
+
+data Status =
+    Online
+  | DoNotDisturb
+  | Idle
+  | Invisible
+  | Offline
+    deriving Show
+
+instance FromJSON Status where
+    parseJSON = withText "Status" $ \case
+        "online"    -> pure Online
+        "dnd"       -> pure DoNotDisturb
+        "idle"      -> pure Idle
+        "invisible" -> pure Invisible
+        "offline"   -> pure Offline
+        s           -> fail ("unknown status" <> T.unpack s)
+
+data ClientStatus = ClientStatus
+    { clientStatusDesktop :: Maybe Status
+    , clientStatusMobile  :: Maybe Status
+    , clientStatusWeb     :: Maybe Status
+    } deriving Show
+
+instance FromJSON ClientStatus where
+    parseJSON = withObject "ClientStatus" $ \obj ->
+        ClientStatus <$> obj .:? "desktop"
+                     <*> obj .:? "mobile"
+                     <*> obj .:? "web"
+
+instance ToJSON Status where
+    toJSON = String . \case
+        Online       -> "online"
+        DoNotDisturb -> "dnd"
+        Idle         -> "idle"
+        Invisible    -> "invisible"
+        Offline      -> "offline"
+
+data Presence = Presence
+    { presenceSince  :: Maybe Int -- "since" epoch millis if idle
+    , presenceGame   :: Maybe Activity
+    , presenceStatus :: Status
+    , presenceAfk    :: Bool
+    } deriving Show
+
+instance ToJSON Presence where
+    toJSON p = object ["since" .= presenceSince p, "game" .= presenceGame p, "status" .= presenceStatus p, "afk" .= presenceAfk p]
+

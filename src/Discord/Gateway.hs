@@ -41,7 +41,7 @@ startGateway policy handler = do
 login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do
     heartbeatInterval <- receiveHello conn
-    writeMessage (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs")) conn
+    writeMessage (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs") Nothing Nothing Nothing Nothing) conn
     Ready{} <- receiveReady conn -- TODO: unpack cache values?
     pure heartbeatInterval
 

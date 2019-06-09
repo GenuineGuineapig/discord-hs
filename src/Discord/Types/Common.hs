@@ -1,6 +1,7 @@
 
 module Discord.Types.Common
-    ( Emoji(..)
+    ( Activity(..)
+    , Emoji(..)
     , Embed(..)
     , Guild(..)
     , GuildMember(..)
@@ -384,6 +385,9 @@ data Activity = Activity deriving Show -- TODO
 
 instance FromJSON Activity where
     parseJSON = const (pure Activity)
+
+instance ToJSON Activity where
+    toJSON _ = Null -- TODO
 
 data Application = Application deriving Show -- TODO
 
