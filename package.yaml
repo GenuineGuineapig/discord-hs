@@ -18,6 +18,7 @@ dependencies:
 
 default-extensions:
   - DataKinds
+  - FlexibleInstances
   - GADTs
   - GeneralizedNewtypeDeriving
   - LambdaCase

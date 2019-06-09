@@ -12,14 +12,14 @@ import Discord.Rest
 import Discord.Types
 
 
-printEvents :: Handler
+printEvents :: Handler Discord
 printEvents = liftIO . print
 
-pongBot :: Handler
+pongBot :: Handler Discord
 pongBot = \case
   -- if message is "ping", send message to channel saying "pong"
     MessageCreate msg -> when (messageContent msg == "ping") $ do
-        createdMsg <- makeRequest (createMessage (messageChannelId msg) (CreateMessageRequest "pong" Nothing Nothing Nothing))
+        createdMsg <- runRequest (createMessage (messageChannelId msg) (CreateMessageRequest "pong" Nothing Nothing Nothing))
         liftIO (print createdMsg)
         pure ()
     _ -> pure ()
@@ -27,4 +27,5 @@ pongBot = \case
 main :: IO ()
 main = withSocketsDo $ do
     token <- Token <$> TIO.readFile "../discord.auth"
-    startDiscord ReconnectAlways token pongBot
+    runDiscord token $ do
+        startGateway ReconnectAlways pongBot

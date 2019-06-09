@@ -8,6 +8,7 @@ module Discord.Types
     , Message(..)
     , Role(..)
     , Snowflake(..)
+    , Token(..)
     , UnavailableGuild(..)
     , User(..)
     , VoiceState(..)
@@ -16,8 +17,16 @@ module Discord.Types
 
 import Control.Applicative ((<|>))
 import Data.Aeson
+import Data.String (IsString)
 import Data.Text (Text)
 import Data.Word
+
+
+newtype Token = Token { unToken :: Text } deriving (IsString, ToJSON)
+
+instance Show Token where
+    show _ = "<secret token>"
+
 
 newtype Snowflake = Snowflake { unSnowflake :: Word64 } deriving (Eq, Ord, Show)
 

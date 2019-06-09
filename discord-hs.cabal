@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 34420e28bf9b00802c25cf94bd6dd1f109f38c5c79ba787a4ae11c81a135284b
+-- hash: 20fe4d82c63124cb8639e9fffa105d58eeb0b39b7a4028c7e40d89ddc37de540
 
 name:           discord-hs
 version:        0.1.0.0
@@ -30,7 +30,7 @@ library
       Paths_discord_hs
   hs-source-dirs:
       src
-  default-extensions: DataKinds GADTs GeneralizedNewtypeDeriving LambdaCase NumericUnderscores OverloadedStrings ScopedTypeVariables
+  default-extensions: DataKinds FlexibleInstances GADTs GeneralizedNewtypeDeriving LambdaCase NumericUnderscores OverloadedStrings ScopedTypeVariables
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
   build-depends:
       aeson

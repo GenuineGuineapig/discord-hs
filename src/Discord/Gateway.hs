@@ -26,11 +26,6 @@ data GatewayRequest = Identify Token ConnectionProps {- TODO Compression, Large 
                     | UpdateStatus -- TODO
                     deriving Show
 
-newtype Token = Token { unToken :: Text } deriving (IsString, ToJSON)
-
-instance Show Token where
-    show _ = "<secret token>"
-
 
 
 data ConnectionProps = ConnectionProps { os :: Text, browser :: Text, device :: Text } deriving Show
