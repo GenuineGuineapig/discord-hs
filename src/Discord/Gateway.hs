@@ -1,159 +1,116 @@
 
 module Discord.Gateway
-    ( GatewayRequest(..)
-    , GatewayMessage(..)
-    , Token(..)
-    , ConnectionProps(..)
-    , Event(..)
+    ( Handler
+    , HasIncomingEvents(..)
+    , startGateway
     )
     where
 
-import Data.Aeson
-import Data.Aeson.Types
-import Data.String (IsString)
-import Data.Text (Text)
+import           Data.Aeson
+import qualified Data.ByteString.Lazy as BL
+import           Control.Lens
+import           Control.Monad.Reader
+import qualified Network.WebSockets as WS
+import           UnliftIO hiding (Handler)
+import           UnliftIO.Concurrent
+import           Wuss
 
-import Discord.Types
-
-
--- Gateway requests
-
-data GatewayRequest = Identify Token ConnectionProps {- TODO Compression, Large threshold, Shard, Presence -} 
-                    | Resume -- TODO
-                    | OutgoingHeartbeat (Maybe Int)
-                    | RequestGuildMembers -- TODO
-                    | UpdateVoiceState -- TODO
-                    | UpdateStatus -- TODO
-                    deriving Show
+import Discord.Types.Common
+import Discord.Types.Gateway
 
 
+class HasIncomingEvents e where
+    incomingEventsL :: Lens' e (Chan Event)
 
-data ConnectionProps = ConnectionProps { os :: Text, browser :: Text, device :: Text } deriving Show
+instance HasIncomingEvents (Chan Event) where
+    incomingEventsL = id
 
-gatewayReq :: Int -> Value -> Value
-gatewayReq op val = object [ "op" .= op, "d" .= val ]
+startGateway :: (HasToken e, HasIncomingEvents e, MonadReader e m, MonadUnliftIO m) => ReconnectPolicy -> Handler m -> m ()
+startGateway policy handler = do
+    incoming <- view incomingEventsL
 
-instance ToJSON ConnectionProps where
-    toJSON p = object ["$os" .= os p, "$browser" .= browser p, "$device" .= device p]
+    race_ (runGatewayClient policy)
+          (forever $ handleEvent incoming)
 
-instance ToJSON GatewayRequest where
-    toJSON = \case
-        OutgoingHeartbeat s  -> gatewayReq 1 $ maybe Null (Number . fromIntegral) s
-        Identify token props -> gatewayReq 2 $ object ["token" .= token, "properties" .= props]
-        r -> error ("unimplemented gateway request" <> show r)
+    where
 
-
--- Gateway messages
-
-data GatewayMessage = Dispatch Int Event
-                    | IncomingHeartbeat -- TODO
-                    | Reconnect -- TODO
-                    | InvalidSession Bool -- whether it's resumable
-                    | Hello Int {- TODO trace -}
-                    | HeartbeatAck
-                    deriving Show
-
-newtype SessionId = SessionId { unSessionId :: Text } deriving (FromJSON, IsString, Show)
-
-data Event =
-    Ready User {- TODO private channels -} [UnavailableGuild] SessionId {- TODO trace and shard -}
-  | Resumed
-
-  | GuildCreate Guild
-  | GuildUpdate Guild
-  | GuildDelete UnavailableGuild
-  | GuildBanAdd Snowflake User
-  | GuildBanRemove Snowflake User
-  | GuildEmojisUpdate Snowflake [Emoji]
-  | GuildIntegrationsUpdate
-  | GuildMemberAdd Snowflake GuildMember
-  | GuildMemberRemove Snowflake User
-  | GuildMemberUpdate Snowflake [Snowflake] {- roles -} User Text {- nick -}
-  | GuildMembersChunk Snowflake [GuildMember]
-  | GuildRoleCreate Snowflake Role
-  | GuildRoleUpdate Snowflake Role
-  | GuildRoleDelete Snowflake Snowflake {- guild_id, role_id -}
-
-  | ChannelCreate Channel
-  | ChannelUpdate Channel
-  | ChannelDelete Channel
-  | ChannelPinsUpdate (Maybe Snowflake) {- guild id -} Snowflake Text
-
-  | MessageCreate Message
-  | MessageUpdate -- TODO
-  | MessageDelete Snowflake Snowflake (Maybe Snowflake) {- message, channel, guild -}
-  | MessageDeleteBulk [Snowflake] Snowflake (Maybe Snowflake) {- messages, channel, guild -}
-  | MessageReactionAdd Snowflake Snowflake Snowflake (Maybe Snowflake) {- user, channel, message, guild, TODO: PARTIAL Emoji FFS -}
-  | MessageReactionRemove Snowflake Snowflake Snowflake (Maybe Snowflake) {- user, channel, message, guild, TODO: PARTIAL Emoji FFS -}
-  | MessageReactionRemoveAll Snowflake Snowflake (Maybe Snowflake) {- channel, message, guild -}
-
-  | PresenceUpdate
-  | TypingStart Snowflake (Maybe Snowflake) Snowflake Int {- channel. guild, user, timestamp in seconds -}
-  | UserUpdate User
-
-  | VoiceStateUpdate VoiceState
-  | VoiceServerUpdate Text Snowflake Text {- token, guild, voice server host -}
-
-  | WebhooksUpdate Snowflake Snowflake {- guild, channel -}
-
-    deriving Show
-
-eventFromJSON :: String -> Value -> Parser Event
-eventFromJSON = \case
-    "READY"   -> withObject "Ready" $ \obj -> Ready <$> obj .: "user" <*> obj .: "guilds" <*> obj .: "session_id"
-    "RESUMED" -> const (pure Resumed)
-
-    "GUILD_CREATE"              -> fmap GuildCreate . parseJSON
-    "GUILD_UPDATE"              -> fmap GuildUpdate . parseJSON
-    "GUILD_DELETE"              -> fmap GuildDelete . parseJSON
-    "GUILD_BAN_ADD"             -> withObject "GuildBanAdd"       $ \obj -> GuildBanAdd       <$> obj .: "guild_id" <*> obj .: "user"
-    "GUILD_BAN_REMOVE"          -> withObject "GuildBanRemove"    $ \obj -> GuildBanRemove    <$> obj .: "guild_id" <*> obj .: "user"
-    "GUILD_EMOJIS_UPDATE"       -> withObject "GuildEmojisUpdate" $ \obj -> GuildEmojisUpdate <$> obj .: "guild_id" <*> obj .: "emojis"
-    "GUILD_INTEGRATIONS_UPDATE" -> const (pure GuildIntegrationsUpdate)
-    "GUILD_MEMBER_ADD"          -> \v -> GuildMemberAdd <$> withObject "GuildMemberAdd" (.: "guild_id") v <*> parseJSON v -- discord idiocy.
-    "GUILD_MEMBER_REMOVE"       -> withObject "GuildMemberRemove" $ \obj -> GuildMemberRemove <$> obj .: "guild_id" <*> obj .: "user"
-    "GUILD_MEMBER_UPDATE"       -> withObject "GuildMemberUpdate" $ \obj -> GuildMemberUpdate <$> obj .: "guild_id" <*> obj .: "roles" <*> obj .: "user" <*> obj .: "nick"
-    "GUILD_MEMBERS_CHUNK" -> withObject "GuildMembersChunk" $ \obj -> GuildMembersChunk <$> obj .: "guild_id" <*> obj .: "members"
-    "GUILD_ROLE_CREATE"   -> withObject "GuildRoleCreate"   $ \obj -> GuildRoleCreate   <$> obj .: "guild_id" <*> obj .: "role"
-    "GUILD_ROLE_UPDATE"   -> withObject "GuildRoleUpdate"   $ \obj -> GuildRoleUpdate   <$> obj .: "guild_id" <*> obj .: "role"
-    "GUILD_ROLE_DELETE"   -> withObject "GuildRoleDelete"   $ \obj -> GuildRoleDelete   <$> obj .: "guild_id" <*> obj .: "role_id"
-
-    "CHANNEL_CREATE"      -> fmap ChannelCreate . parseJSON
-    "CHANNEL_UPDATE"      -> fmap ChannelUpdate . parseJSON
-    "CHANNEL_DELETE"      -> fmap ChannelDelete . parseJSON
-    "CHANNEL_PINS_UPDATE" -> withObject "ChannelPinsUpdate" $ \obj -> ChannelPinsUpdate <$> obj .:? "guild_id" <*> obj .: "channel_id" <*> obj .: "timestamp"
-
-    "MESSAGE_CREATE"      -> fmap MessageCreate . parseJSON
-    "MESSAGE_UPDATE"      -> const (pure MessageUpdate) -- TODO: this has a PARTIAL message..
-    "MESSAGE_DELETE"      -> withObject "MessageDelete"         $ \obj -> MessageDelete         <$> obj .: "id"      <*> obj .: "channel_id" <*> obj .:? "guild_id"
-    "MESSAGE_DELETE_BULK" -> withObject "MessageDeleteBulk"     $ \obj -> MessageDeleteBulk     <$> obj .: "ids"     <*> obj .: "channel_id" <*> obj .:? "guild_id"
-
-    "MESSAGE_REACTION_ADD"        -> withObject "MessageReactionAdd"       $ \obj -> MessageReactionAdd       <$> obj .: "user_id" <*> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id" -- <*> obj .: "emoji" TODO PARTIAL EMOJI
-    "MESSAGE_REACTION_REMOVE"     -> withObject "MessageReactionRemove"    $ \obj -> MessageReactionRemove    <$> obj .: "user_id" <*> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id" -- <*> obj .: "emoji" TODO PARTIAL EMOJI
-    "MESSAGE_REACTION_REMOVE_ALL" -> withObject "MessageReactionRemoveAll" $ \obj -> MessageReactionRemoveAll <$> obj .: "channel_id" <*> obj .: "message_id" <*> obj .:? "guild_id"
-
-    "PRESENCE_UPDATE" -> const (pure PresenceUpdate) -- TODO
-    "TYPING_START"    -> withObject "TypingStart" $ \obj -> TypingStart <$> obj .: "channel_id" <*> obj .:? "guild_id" <*> obj .: "user_id" <*> obj .: "timestamp"
-    "USER_UPDATE"     -> fmap UserUpdate . parseJSON
-
-    "VOICE_STATE_UPDATE" -> fmap VoiceStateUpdate . parseJSON
-    "VOICE_SERVER_UPDATE" -> withObject "VoiceServerUpdate" $ \obj -> VoiceServerUpdate <$> obj .: "token" <*> obj .: "guild_id" <*> obj .: "endpoint"
-
-    "WEBHOOKS_UPDATE" -> withObject "WebhooksUpdate" $ \obj -> WebhooksUpdate <$> obj .: "guild_id" <*> obj .: "channel_id"
-    t -> error ("unimplemented event type: " <> t)
+    handleEvent incoming = do
+        event <- readChan incoming
+        handler event
 
 
-instance FromJSON GatewayMessage where
-    parseJSON = withObject "Payload" $ \obj -> do
-        op      <- obj .: "op" -- :: Parser Int TODO why isn't Parser in scope
-        rawData <- obj .: "d"
-        case op of
-            0  -> do
-                eventType <- obj .: "t"
-                Dispatch <$> obj .: "s" <*> eventFromJSON eventType rawData
-            1  -> fail ("Heartbeat unimplemented")
-            7  -> fail ("Reconnect unimplemented")
-            9  -> withBool "InvalidSession" (pure . InvalidSession) rawData
-            10 -> withObject "Hello" (\data' -> Hello <$> data' .: "heartbeat_interval") rawData
-            11 -> pure HeartbeatAck
-            _  -> fail ("unknown opcode " <> show (op :: Int)) -- todo why isn't Parser in scope
+login :: Token -> WS.ClientApp Int {- heartbeat interval -}
+login token conn = do
+    heartbeatInterval <- receiveHello conn
+    writeMessage (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs")) conn
+    Ready _ _ _ <- receiveReady conn -- TODO: unpack cache values?
+    pure heartbeatInterval
+
+receiveHello :: WS.ClientApp Int
+receiveHello conn = do
+    msg <- readMessage conn
+    case msg of
+        Hello interval -> pure interval
+        _ -> receiveHello conn -- TODO: exception? unexpected message
+
+receiveReady :: WS.ClientApp Event
+receiveReady conn = do
+    msg <- readMessage conn
+    case msg of
+        Dispatch _ event@(Ready _ _ _) -> pure event
+        _ -> receiveReady conn -- TODO: exception? unexpected message
+
+
+runGatewayClient :: (HasToken e, HasIncomingEvents e, MonadReader e m, MonadIO m) => ReconnectPolicy -> m ()
+runGatewayClient policy = do
+    token    <- view tokenL
+    incoming <- view incomingEventsL
+
+    liftIO $ forever $ do
+        runSecureClient "gateway.discord.gg" 443 "/" (discordClient token incoming)
+            `catch` \(e :: SomeException) -> do
+                putStrLn ("Exception in gateway client: " <> show e)
+                case policy of
+                    ReconnectAlways -> pure ()
+                    ReconnectNever  -> throwIO e
+
+        putStrLn "Lost connection. Reconnecting in 5 seconds..."
+        threadDelay 5_000_000
+
+-- TODO: restore sequence numbers when reconnecting
+discordClient :: Token -> Chan Event -> WS.ClientApp ()
+discordClient token incoming conn = do
+    heartbeatInterval <- login token conn
+    sequenceRef       <- newIORef Nothing
+
+    race_ (heartbeat sequenceRef heartbeatInterval)
+          (readIncoming sequenceRef)
+
+    where
+
+    heartbeat :: IORef (Maybe Int) -> Int -> IO ()
+    heartbeat sequenceRef heartbeatInterval = forever $ do
+        currentSeq <- readIORef sequenceRef
+        writeMessage (OutgoingHeartbeat currentSeq) conn
+        threadDelay (heartbeatInterval * 1000)
+
+    readIncoming :: IORef (Maybe Int) -> IO ()
+    readIncoming sequenceRef = do
+        msg <- readMessage conn
+        case msg of
+            HeartbeatAck -> pure ()
+            Dispatch n event -> do
+                writeIORef sequenceRef (Just n)
+                writeChan incoming event
+            t -> putStrLn ("UNHANDLED: " <> show t)
+        readIncoming sequenceRef
+
+readMessage :: WS.ClientApp GatewayMessage
+readMessage conn = do
+        rawMsg <- WS.receiveData conn :: IO BL.ByteString
+        case eitherDecode rawMsg of
+            Right msg -> pure msg
+            Left err  -> throwString ("Error decoding message: " <> err) -- TODO: create exception type
+
+writeMessage :: GatewayRequest -> WS.ClientApp ()
+writeMessage msg conn = WS.sendTextData conn (encode msg)

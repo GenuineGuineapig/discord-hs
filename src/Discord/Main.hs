@@ -6,11 +6,8 @@ import           Control.Monad.IO.Class
 import qualified Data.Text.IO as TIO
 import           Network.Socket (withSocketsDo)
 
-import Discord.Client
-import Discord.Gateway
-import Discord.Rest
-import Discord.Types
-
+import Discord
+import Discord.Rest.Channel
 
 printEvents :: Handler Discord
 printEvents = liftIO . print
