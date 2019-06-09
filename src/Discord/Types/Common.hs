@@ -51,11 +51,11 @@ data User = User -- TODO: remaining items
     } deriving Show
 
 instance FromJSON User where
-    parseJSON = withObject "User" $ \obj -> do
+    parseJSON = withObject "User" $ \obj ->
         User <$> obj .: "id" <*> obj .: "username" <*> obj .: "discriminator"
 
 
-data UnavailableGuild = UnavailableGuild Snowflake deriving Show -- TODO: track whether we were kicked ("unavailable" is unset)
+newtype UnavailableGuild = UnavailableGuild Snowflake deriving Show -- TODO: track whether we were kicked ("unavailable" is unset)
 
 instance FromJSON UnavailableGuild where
     parseJSON = withObject "UnavailableGuild" $ \obj -> UnavailableGuild <$> obj .: "id"
@@ -421,8 +421,7 @@ data Message = Message
     } deriving Show
 
 instance FromJSON Message where
-    parseJSON = withObject "Message" $ \obj -> do
-
+    parseJSON = withObject "Message" $ \obj ->
         Message <$> obj .:  "id"
                 <*> obj .:  "channel_id"
                 <*> obj .:? "guild_id"

@@ -157,8 +157,8 @@ instance FromJSON GatewayMessage where
             0  -> do
                 eventType <- obj .: "t"
                 Dispatch <$> obj .: "s" <*> eventFromJSON eventType rawData
-            1  -> fail ("Heartbeat unimplemented")
-            7  -> fail ("Reconnect unimplemented")
+            1  -> fail "Heartbeat unimplemented"
+            7  -> fail "Reconnect unimplemented"
             9  -> withBool "InvalidSession" (pure . InvalidSession) rawData
             10 -> withObject "Hello" (\data' -> Hello <$> data' .: "heartbeat_interval") rawData
             11 -> pure HeartbeatAck

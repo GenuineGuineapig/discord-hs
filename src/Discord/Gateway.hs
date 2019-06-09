@@ -42,7 +42,7 @@ login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do
     heartbeatInterval <- receiveHello conn
     writeMessage (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs")) conn
-    Ready _ _ _ <- receiveReady conn -- TODO: unpack cache values?
+    Ready{} <- receiveReady conn -- TODO: unpack cache values?
     pure heartbeatInterval
 
 receiveHello :: WS.ClientApp Int
@@ -56,7 +56,7 @@ receiveReady :: WS.ClientApp Event
 receiveReady conn = do
     msg <- readMessage conn
     case msg of
-        Dispatch _ event@(Ready _ _ _) -> pure event
+        Dispatch _ event@Ready{} -> pure event
         _ -> receiveReady conn -- TODO: exception? unexpected message
 
 

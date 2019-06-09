@@ -51,10 +51,10 @@ runRequest request = do
                             429 -> traverse_ waitRateLimit (parseLimit resp) *> go
                             _   -> tryPutMVar box (Left (SomeException e)) *> throwIO e
                     _ -> tryPutMVar box (Left (SomeException e)) *> throwIO e)
-                `catch` (\(e :: SomeException) -> tryPutMVar box (Left e) *> pure ())
+                `catch` (\(e :: SomeException) -> void $ tryPutMVar box (Left e))
 
     -- TODO: this shouldn't deadlock(?) but double-check
-    _ <- forkIO $ withMVar lock $ \_ -> go
+    _ <- forkIO $ withMVar lock (const go)
 
     result <- takeMVar box
     case result of
@@ -62,13 +62,13 @@ runRequest request = do
         Right a -> pure a
 
 getRouteLock :: MonadUnliftIO m => RateLimits -> Url 'Https -> Maybe Snowflake -> m Lock
-getRouteLock limits route major = do
-    modifyMVar (routeLocks limits) $ \routeLocks ->
-        case M.lookup (route, major) routeLocks of
-            Just semaphore -> pure (routeLocks, semaphore)
+getRouteLock limits route major =
+    modifyMVar (routeLocks limits) $ \locks ->
+        case M.lookup (route, major) locks of
+            Just lock -> pure (locks, lock)
             Nothing -> do
-                semaphore <- newMVar ()
-                pure (M.insert (route, major) semaphore routeLocks, semaphore)
+                lock <- newMVar ()
+                pure (M.insert (route, major) lock locks, lock)
 
 parseLimit :: HC.Response a -> Maybe RateLimit
 parseLimit response = do
@@ -79,8 +79,9 @@ parseLimit response = do
     where
     getHeader bs = lookup (mk bs) (HC.responseHeaders response)
 
-    scope = if isGlobal then RLGlobal else RLRoute
-    isGlobal = maybe False (== "true") (getHeader "X-RateLimit-Global")
+    scope = case getHeader "X-Ratelimit-Global" of
+        Just "true" -> RLGlobal
+        _           -> RLRoute
     noneRemaining = maybe True (== "0") (getHeader "X-RateLimit-Remaining")
 
     retryAfter     = read . BS8.unpack <$> getHeader "Retry-After"       :: Maybe Int

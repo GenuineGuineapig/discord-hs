@@ -20,7 +20,7 @@ mkRequest :: (FromJSON a, HttpMethod method, HttpBody body, HttpBodyAllowed (All
 mkRequest url major method body options =
     Request { requestUrl    = url
             , requestMajor  = major
-            , requestAction = \token -> req method url body jsonResponse (options <> (header "Authorization" ("Bot " <> encodeUtf8 (unToken token))))
+            , requestAction = \token -> req method url body jsonResponse (options <> header "Authorization" ("Bot " <> encodeUtf8 (unToken token)))
             }
 
 data Request a = Request { requestUrl    :: Url 'Https
