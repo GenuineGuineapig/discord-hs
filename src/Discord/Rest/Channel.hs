@@ -15,7 +15,7 @@ import Discord.Types.Rest
 
 data CreateMessageRequest = CreateMessageRequest -- TODO
     { createMessageContent :: Text
-    , createMessageNonce   :: Maybe Snowflake
+    , createMessageNonce   :: Maybe (Snowflake ())
     , createMessageTts     :: Maybe Bool
     , createMessageEmbed   :: Maybe Embed
     -- TODO createMessageFile        :: ?
@@ -30,7 +30,7 @@ instance ToJSON CreateMessageRequest where
                         ]
 
 -- POST /channels/{channel.id}/messages
-createMessage :: Snowflake -> CreateMessageRequest -> Request Message
+createMessage :: Snowflake Channel -> CreateMessageRequest -> Request Channel Message
 createMessage channel create =
     mkRequest (baseUrl /: "channels" /~ unSnowflake channel /: "messages")
               (Just channel)

@@ -1,4 +1,6 @@
 
+{-# language StandaloneDeriving #-}
+
 module Discord.Types.Common
     ( Activity(..)
     , Emoji(..)
@@ -10,6 +12,7 @@ module Discord.Types.Common
     , Message(..)
     , Role(..)
     , Snowflake(..)
+    , SomeSnowflake(..)
     , Token(..)
     , UnavailableGuild(..)
     , User(..)
@@ -38,16 +41,29 @@ instance Show Token where
     show _ = "<secret token>"
 
 
-newtype Snowflake = Snowflake { unSnowflake :: Word64 } deriving (Eq, Ord, Show)
+-- Snowflake parameterized by the type it references
+newtype Snowflake ty = Snowflake { unSnowflake :: Word64 } deriving (Eq, Ord, Show)
 
-instance FromJSON Snowflake where
+data SomeSnowflake where
+    SomeSnowflake :: Snowflake ty -> SomeSnowflake
+
+instance Eq SomeSnowflake where
+    SomeSnowflake a == SomeSnowflake b = unSnowflake a == unSnowflake b
+
+instance Ord SomeSnowflake where
+    compare (SomeSnowflake a) (SomeSnowflake b) = compare (unSnowflake a) (unSnowflake b)
+
+instance Show SomeSnowflake where
+    show (SomeSnowflake a) = show (unSnowflake a)
+
+instance FromJSON (Snowflake ty) where
     parseJSON = fmap (Snowflake . read) . parseJSON
 
-instance ToJSON Snowflake where
+instance ToJSON (Snowflake ty) where
     toJSON (Snowflake v) = toJSON (show v)
 
 data User = User -- TODO: remaining items
-    { userId            :: Snowflake
+    { userId            :: Snowflake User
     , userName          :: Text
     , userDiscriminator :: Text
     } deriving Show
@@ -57,21 +73,21 @@ instance FromJSON User where
         User <$> obj .: "id" <*> obj .: "username" <*> obj .: "discriminator"
 
 
-newtype UnavailableGuild = UnavailableGuild Snowflake deriving Show -- TODO: track whether we were kicked ("unavailable" is unset)
+newtype UnavailableGuild = UnavailableGuild (Snowflake Guild) deriving Show -- TODO: track whether we were kicked ("unavailable" is unset)
 
 instance FromJSON UnavailableGuild where
     parseJSON = withObject "UnavailableGuild" $ \obj -> UnavailableGuild <$> obj .: "id"
 
 
 data Channel = Channel -- TODO: sum type
-    { channelId            :: Snowflake
+    { channelId            :: Snowflake Channel
     , channelType          :: Int -- TODO: sum type
-    , channelGuildId       :: Maybe Snowflake
+    , channelGuildId       :: Maybe (Snowflake Guild)
     , channelPosition      :: Maybe Integer
     , channelName          :: Maybe String
     , channelTopic         :: Maybe String
     , channelNsfw          :: Maybe Bool
-    , channelLastMessageId :: Maybe Snowflake
+    , channelLastMessageId :: Maybe (Snowflake Message)
     , channelBitrate       :: Maybe Integer
     , channelUserLimit     :: Maybe Integer
     -- TODO: remaining
@@ -93,15 +109,15 @@ instance FromJSON Channel where
 
 
 data Guild = Guild
-    { guildId                :: Snowflake
+    { guildId                :: Snowflake Guild
     , guildName              :: Text
     , guildIcon              :: Maybe Text
     , guildSplash            :: Maybe Text
     , guildOwner             :: Maybe Bool
-    , guildOwnerId           :: Snowflake
+    , guildOwnerId           :: Snowflake User
     , guildPermissions       :: Maybe Int
     , guildRegion            :: String
-    , guildAfkChannelId      :: Maybe Snowflake
+    , guildAfkChannelId      :: Maybe (Snowflake Channel)
     , guildAfkTimeout        :: Int
     , guildEmbedEnabled      :: Maybe Bool
     , guildEmbedChannelId    :: Maybe Bool
@@ -128,7 +144,7 @@ instance FromJSON Role where
     parseJSON = const (pure Role)
 
 data Emoji = Emoji
-    { emojiId            :: Maybe Snowflake
+    { emojiId            :: Maybe (Snowflake Emoji)
     , emojiName          :: String
     , emojiRoles         :: Maybe [Role]
     , emojiUser          :: Maybe User
@@ -149,7 +165,7 @@ instance FromJSON Emoji where
 
 data GuildMember = GuildMember
     { guildMemberNick     :: Maybe Text
-    , guildMemberRoles    :: [Snowflake]
+    , guildMemberRoles    :: [Snowflake Role]
     , guildMemberJoinedAt :: Text -- TODO: timestamp
     , guildMemberDeaf     :: Bool
     , guildMemberMute     :: Bool
@@ -164,7 +180,7 @@ instance FromJSON GuildMember where
                     <*> obj .:  "mute"
 
 data WebhookUser = WebhookUser
-    { webhookUserId     :: Snowflake
+    { webhookUserId     :: Snowflake User
     , webhookUserName   :: Text
     , webhookUserAvatar :: Maybe Text
     } deriving Show
@@ -177,7 +193,7 @@ instance FromJSON WebhookUser where
                     <*> obj .:? "avatar"
 
 data Attachment = Attachment
-    { attachmentId       :: Snowflake
+    { attachmentId       :: Snowflake Attachment
     , attachmentFilename :: Text
     , attachmentSize     :: Int
     , attachmentUrl      :: Text
@@ -399,10 +415,12 @@ data VoiceState = VoiceState deriving Show -- TODO
 instance FromJSON VoiceState where
     parseJSON = const (pure VoiceState)
 
+data Webhook = Webhook deriving Show -- TODO
+
 data Message = Message
-    { messageId              :: Snowflake
-    , messageChannelId       :: Snowflake
-    , messageGuildId         :: Maybe Snowflake
+    { messageId              :: Snowflake Message
+    , messageChannelId       :: Snowflake Channel
+    , messageGuildId         :: Maybe (Snowflake Guild)
     , messageAuthor          :: Either User WebhookUser
     , messageGuildMember     :: Maybe GuildMember
     , messageContent         :: Text
@@ -411,13 +429,13 @@ data Message = Message
     , messageTts             :: Bool
     , messageMentionEveryone :: Bool
     , messageMentions        :: [(User, Maybe GuildMember)]
-    , messageMentionRoles    :: [Snowflake]
+    , messageMentionRoles    :: [Snowflake Role]
     , messageAttachments     :: [Attachment]
     , messageEmbeds          :: [Embed]
     , messageReactions       :: Maybe [Reaction]
-    , messageNonce           :: Maybe Snowflake
+    , messageNonce           :: Maybe (Snowflake ())
     , messagePinned          :: Bool
-    , messageWebhookId       :: Maybe Snowflake
+    , messageWebhookId       :: Maybe (Snowflake Webhook)
     , messageType            :: Int -- TODO: enum
     , messageActivity        :: Maybe Activity
     , messageApplication     :: Maybe Application

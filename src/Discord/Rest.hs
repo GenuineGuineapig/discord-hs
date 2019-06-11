@@ -28,7 +28,7 @@ import Discord.Types.Common
 import Discord.Types.Rest
 
 
-runRequest :: (FromJSON a, HasToken e, HasRateLimits e, MonadReader e m, MonadUnliftIO m) => Request a -> m a
+runRequest :: (FromJSON a, HasToken e, HasRateLimits e, MonadReader e m, MonadUnliftIO m) => Request ty a -> m a
 runRequest request = do
     limits <- view rateLimitsL
 
@@ -61,14 +61,14 @@ runRequest request = do
         Left  e -> throwIO e
         Right a -> pure a
 
-getRouteLock :: MonadUnliftIO m => RateLimits -> Url 'Https -> Maybe Snowflake -> m Lock
+getRouteLock :: MonadUnliftIO m => RateLimits -> Url 'Https -> Maybe (Snowflake ty) -> m Lock
 getRouteLock limits route major =
     modifyMVar (routeLocks limits) $ \locks ->
-        case M.lookup (route, major) locks of
+        case M.lookup (route, SomeSnowflake <$> major) locks of
             Just lock -> pure (locks, lock)
             Nothing -> do
                 lock <- newMVar ()
-                pure (M.insert (route, major) lock locks, lock)
+                pure (M.insert (route, SomeSnowflake <$> major) lock locks, lock)
 
 parseLimit :: HC.Response a -> Maybe RateLimit
 parseLimit response = do
@@ -108,7 +108,7 @@ type Lock = MVar ()
 
 data RateLimits = RateLimits
     { globalLock :: Lock
-    , routeLocks :: MVar (Map (Url 'Https, Maybe Snowflake) Lock)
+    , routeLocks :: MVar (Map (Url 'Https, Maybe SomeSnowflake) Lock)
     }
 
 class HasRateLimits e where

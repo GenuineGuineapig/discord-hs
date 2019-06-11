@@ -28,8 +28,8 @@ data ReconnectPolicy =
 data GatewayRequest = Identify Token ConnectionProps (Maybe Bool) (Maybe Int) (Maybe [Int]) (Maybe Presence) {- token, props, compress, large threshold, shard, presence -}
                     | Resume Token Text Int {- token, session ID, last sequence number received-}
                     | OutgoingHeartbeat (Maybe Int)
-                    | RequestGuildMembers [Snowflake] Text Int {- guilds, query (prefix), limit -}
-                    | UpdateVoiceState Snowflake (Maybe Snowflake) Bool Bool {- guild, channel, mute, deaf -}
+                    | RequestGuildMembers [Snowflake Guild] Text Int {- guilds, query (prefix), limit -}
+                    | UpdateVoiceState (Snowflake Guild) (Maybe (Snowflake Channel)) Bool Bool {- guild, channel, mute, deaf -}
                     | UpdateStatus Presence
                     deriving Show
 
@@ -72,39 +72,39 @@ data Event =
   | GuildCreate Guild
   | GuildUpdate Guild
   | GuildDelete UnavailableGuild
-  | GuildBanAdd Snowflake User
-  | GuildBanRemove Snowflake User
-  | GuildEmojisUpdate Snowflake [Emoji]
+  | GuildBanAdd (Snowflake Guild) User
+  | GuildBanRemove (Snowflake Guild) User
+  | GuildEmojisUpdate (Snowflake Guild) [Emoji]
   | GuildIntegrationsUpdate
-  | GuildMemberAdd Snowflake GuildMember
-  | GuildMemberRemove Snowflake User
-  | GuildMemberUpdate Snowflake [Snowflake] {- roles -} User Text {- nick -}
-  | GuildMembersChunk Snowflake [GuildMember]
-  | GuildRoleCreate Snowflake Role
-  | GuildRoleUpdate Snowflake Role
-  | GuildRoleDelete Snowflake Snowflake {- guild_id, role_id -}
+  | GuildMemberAdd (Snowflake Guild) GuildMember
+  | GuildMemberRemove (Snowflake Guild) User
+  | GuildMemberUpdate (Snowflake Guild) [Snowflake Role] User Text {- nick -}
+  | GuildMembersChunk (Snowflake Guild) [GuildMember]
+  | GuildRoleCreate (Snowflake Guild) Role
+  | GuildRoleUpdate (Snowflake Guild) Role
+  | GuildRoleDelete (Snowflake Guild) (Snowflake Role) {- guild_id, role_id -}
 
   | ChannelCreate Channel
   | ChannelUpdate Channel
   | ChannelDelete Channel
-  | ChannelPinsUpdate (Maybe Snowflake) {- guild id -} Snowflake Text
+  | ChannelPinsUpdate (Maybe (Snowflake Guild)) (Snowflake Message) Text {- last pin timestamp -}
 
   | MessageCreate Message
   | MessageUpdate Message
-  | MessageDelete Snowflake Snowflake (Maybe Snowflake) {- message, channel, guild -}
-  | MessageDeleteBulk [Snowflake] Snowflake (Maybe Snowflake) {- messages, channel, guild -}
-  | MessageReactionAdd Snowflake Snowflake Snowflake (Maybe Snowflake) Emoji {- user, channel, message, guild, emoji -}
-  | MessageReactionRemove Snowflake Snowflake Snowflake (Maybe Snowflake) Emoji {- user, channel, message, guild, emoji -}
-  | MessageReactionRemoveAll Snowflake Snowflake (Maybe Snowflake) {- channel, message, guild -}
+  | MessageDelete (Snowflake Message) (Snowflake Channel) (Maybe (Snowflake Guild))
+  | MessageDeleteBulk [Snowflake Message] (Snowflake Channel) (Maybe (Snowflake Guild))
+  | MessageReactionAdd (Snowflake User) (Snowflake Channel) (Snowflake Message) (Maybe (Snowflake Guild)) Emoji
+  | MessageReactionRemove (Snowflake User) (Snowflake Channel) (Snowflake Message) (Maybe (Snowflake Guild)) Emoji
+  | MessageReactionRemoveAll (Snowflake Channel) (Snowflake Message) (Maybe (Snowflake Guild))
 
-  | PresenceUpdate Value [Snowflake] (Maybe Activity) Snowflake Status [Activity] ClientStatus {- user, roles, game, guild_id, status, activities, client_status -}
-  | TypingStart Snowflake (Maybe Snowflake) Snowflake Int {- channel. guild, user, timestamp in seconds -}
+  | PresenceUpdate Value [Snowflake Role] (Maybe Activity) (Snowflake Guild) Status [Activity] ClientStatus {- user, roles, game, guild_id, status, activities, client_status -}
+  | TypingStart (Snowflake Channel) (Maybe (Snowflake Guild)) (Snowflake User) Int {- channel. guild, user, timestamp in seconds -}
   | UserUpdate User
 
   | VoiceStateUpdate VoiceState
-  | VoiceServerUpdate Text Snowflake Text {- token, guild, voice server host -}
+  | VoiceServerUpdate Text (Snowflake Guild) Text {- token, guild, voice server host -}
 
-  | WebhooksUpdate Snowflake Snowflake {- guild, channel -}
+  | WebhooksUpdate (Snowflake Guild) (Snowflake Channel)
 
     deriving Show
 
