@@ -14,6 +14,7 @@ import           Control.Monad.Reader
 import           Data.Aeson
 import qualified Data.ByteString.Char8 as BS8
 import           Data.CaseInsensitive
+import           Data.Coerce
 import           Data.Foldable
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
@@ -64,11 +65,11 @@ runRequest request = do
 getRouteLock :: MonadUnliftIO m => RateLimits -> Url 'Https -> Maybe (Snowflake ty) -> m Lock
 getRouteLock limits route major =
     modifyMVar (routeLocks limits) $ \locks ->
-        case M.lookup (route, SomeSnowflake <$> major) locks of
+        case M.lookup (route, coerce major) locks of
             Just lock -> pure (locks, lock)
             Nothing -> do
                 lock <- newMVar ()
-                pure (M.insert (route, SomeSnowflake <$> major) lock locks, lock)
+                pure (M.insert (route, coerce major) lock locks, lock)
 
 parseLimit :: HC.Response a -> Maybe RateLimit
 parseLimit response = do

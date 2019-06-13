@@ -12,7 +12,7 @@ module Discord.Types.Common
     , Message(..)
     , Role(..)
     , Snowflake(..)
-    , SomeSnowflake(..)
+    , SomeSnowflake
     , Token(..)
     , UnavailableGuild(..)
     , User(..)
@@ -44,17 +44,7 @@ instance Show Token where
 -- Snowflake parameterized by the type it references
 newtype Snowflake ty = Snowflake { unSnowflake :: Word64 } deriving (Eq, Ord, Show)
 
-data SomeSnowflake where
-    SomeSnowflake :: Snowflake ty -> SomeSnowflake
-
-instance Eq SomeSnowflake where
-    SomeSnowflake a == SomeSnowflake b = unSnowflake a == unSnowflake b
-
-instance Ord SomeSnowflake where
-    compare (SomeSnowflake a) (SomeSnowflake b) = compare (unSnowflake a) (unSnowflake b)
-
-instance Show SomeSnowflake where
-    show (SomeSnowflake a) = show (unSnowflake a)
+type SomeSnowflake = Snowflake ()
 
 instance FromJSON (Snowflake ty) where
     parseJSON = fmap (Snowflake . read) . parseJSON
@@ -433,7 +423,7 @@ data Message = Message
     , messageAttachments     :: [Attachment]
     , messageEmbeds          :: [Embed]
     , messageReactions       :: Maybe [Reaction]
-    , messageNonce           :: Maybe (Snowflake ())
+    , messageNonce           :: Maybe SomeSnowflake
     , messagePinned          :: Bool
     , messageWebhookId       :: Maybe (Snowflake Webhook)
     , messageType            :: Int -- TODO: enum
