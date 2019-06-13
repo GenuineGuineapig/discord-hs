@@ -69,7 +69,7 @@ data Event =
     Ready User [Channel] [UnavailableGuild] SessionId (Maybe [Int]) {- user, private channels, guilds, session, shard info -}
   | Resumed
 
-  | GuildCreate Guild
+  | GuildCreate Guild [GuildMember] [GuildPresence]
   | GuildUpdate Guild
   | GuildDelete UnavailableGuild
   | GuildBanAdd (Snowflake Guild) User
@@ -113,7 +113,7 @@ eventFromJSON = \case
     "READY"   -> withObject "Ready" $ \obj -> Ready <$> obj .: "user" <*> obj .: "private_channels" <*> obj .: "guilds" <*> obj .: "session_id" <*> obj .:? "shard"
     "RESUMED" -> const (pure Resumed)
 
-    "GUILD_CREATE"              -> fmap GuildCreate . parseJSON
+    "GUILD_CREATE"              -> withObject "GuildCreate" $ \obj -> GuildCreate <$> parseJSON (Object obj) <*> obj .: "members" <*> obj .: "presences"
     "GUILD_UPDATE"              -> fmap GuildUpdate . parseJSON
     "GUILD_DELETE"              -> fmap GuildDelete . parseJSON
     "GUILD_BAN_ADD"             -> withObject "GuildBanAdd"       $ \obj -> GuildBanAdd       <$> obj .: "guild_id" <*> obj .: "user"
@@ -215,3 +215,18 @@ data Presence = Presence
 instance ToJSON Presence where
     toJSON p = object ["since" .= presenceSince p, "game" .= presenceGame p, "status" .= presenceStatus p, "afk" .= presenceAfk p]
 
+data GuildPresence = GuildPresence
+    { guildPresenceUser         :: Value
+    , guildPresenceGame         :: Maybe Activity
+    , guildPresenceStatus       :: Status
+    , guildPresenceActivities   :: [Activity]
+    , guildPresenceClientStatus :: ClientStatus
+    } deriving Show
+
+instance FromJSON GuildPresence where
+    parseJSON = withObject "GuildPresence" $ \obj ->
+        GuildPresence <$> obj .:  "user"
+                      <*> obj .:? "game"
+                      <*> obj .:  "status"
+                      <*> obj .:  "activities"
+                      <*> obj .:  "client_status"

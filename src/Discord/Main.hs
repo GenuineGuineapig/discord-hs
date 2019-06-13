@@ -24,4 +24,4 @@ pongBot = \case
 main :: IO ()
 main = withSocketsDo $ do
     token <- Token <$> TIO.readFile "../discord.auth"
-    runDiscord token $ startGateway ReconnectAlways pongBot
+    runDiscord token $ startGateway ReconnectAlways printEvents
