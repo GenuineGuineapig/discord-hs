@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 43231de8eaeaa2442e93b62b80f8763c169c0def518b3fe14a741ecacbd52474
+-- hash: 616c1f1e6349037939b81a2be0f8ebd46af088754e5cb15d78d8d9d72a8f063b
 
 name:           discord-hs
 version:        0.1.0.0
@@ -30,13 +30,12 @@ library
       Discord.Types
       Discord.Types.Common
       Discord.Types.Gateway
-      Discord.Types.Rest
   other-modules:
       Paths_discord_hs
   hs-source-dirs:
       src
-  default-extensions: DataKinds FlexibleInstances GADTs GeneralizedNewtypeDeriving LambdaCase NumericUnderscores OverloadedStrings ScopedTypeVariables
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+  default-extensions: DataKinds FlexibleContexts FlexibleInstances GADTs GeneralizedNewtypeDeriving LambdaCase NumericUnderscores OverloadedStrings PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -O2 -flate-specialise -fspecialise-aggressively
   build-depends:
       aeson
     , base >=4.12.0.0 && <4.13
@@ -48,6 +47,7 @@ library
     , lens
     , mtl
     , network
+    , polysemy
     , req
     , text
     , time

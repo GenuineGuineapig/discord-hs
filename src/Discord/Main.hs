@@ -9,6 +9,7 @@ import           Network.Socket (withSocketsDo)
 import Discord
 import Discord.Rest.Channel
 
+{-
 printEvents :: Event -> Discord ()
 printEvents = liftIO . print
 
@@ -25,3 +26,4 @@ main :: IO ()
 main = withSocketsDo $ do
     token <- Token <$> TIO.readFile "../discord.auth"
     runDiscord token $ startGateway ReconnectAlways printEvents
+-}

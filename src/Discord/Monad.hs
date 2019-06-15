@@ -26,9 +26,6 @@ data Env = Env { envToken      :: Token
 instance HasToken Env where
     tokenL = lens envToken (\x y -> x { envToken = y })
 
-instance HasRateLimits Env where
-    rateLimitsL = lens envRateLimits (\x y -> x { envRateLimits = y })
-
 instance HasIncomingEvents Env where
     incomingEventsL = lens envIncoming (\x y -> x { envIncoming = y })
 

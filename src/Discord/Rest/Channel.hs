@@ -1,17 +1,13 @@
 
 module Discord.Rest.Channel
     ( CreateMessageRequest(..)
-    , Request(..)
-    , createMessage
     )
     where
 
 import           Data.Aeson
 import           Data.Text (Text)
-import           Network.HTTP.Req
 
 import Discord.Types.Common
-import Discord.Types.Rest
 
 data CreateMessageRequest = CreateMessageRequest -- TODO
     { createMessageContent :: Text
@@ -28,12 +24,3 @@ instance ToJSON CreateMessageRequest where
                         , "tts"     .= createMessageTts msg
                         , "embed"   .= createMessageEmbed msg
                         ]
-
--- POST /channels/{channel.id}/messages
-createMessage :: Snowflake Channel -> CreateMessageRequest -> Request Channel Message
-createMessage channel create =
-    mkRequest (baseUrl /: "channels" /~ unSnowflake channel /: "messages")
-              (Just channel)
-              POST
-              (ReqBodyJson create)
-              mempty

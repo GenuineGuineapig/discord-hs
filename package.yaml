@@ -13,18 +13,29 @@ ghc-options:
   - -Wincomplete-uni-patterns
   - -Wpartial-fields
   - -Wredundant-constraints
+
+  - -O2
+  - -flate-specialise
+  - -fspecialise-aggressively
+
 dependencies:
   - base ^>=4.12.0.0
 
 default-extensions:
   - DataKinds
+  - FlexibleContexts
   - FlexibleInstances
   - GADTs
   - GeneralizedNewtypeDeriving
   - LambdaCase
   - NumericUnderscores
   - OverloadedStrings
+  - PolyKinds
+  - RankNTypes
   - ScopedTypeVariables
+  - TypeApplications
+  - TypeOperators
+  - TypeFamilies
 
 library:
   source-dirs: src
@@ -38,7 +49,6 @@ library:
     - Discord.Types
     - Discord.Types.Common
     - Discord.Types.Gateway
-    - Discord.Types.Rest
   dependencies:
     - aeson
     - bytestring
@@ -49,6 +59,7 @@ library:
     - lens
     - mtl
     - network
+    - polysemy
     - req
     - text
     - time
