@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 616c1f1e6349037939b81a2be0f8ebd46af088754e5cb15d78d8d9d72a8f063b
+-- hash: 3e5d0e9d8224be67a26f6714107eab67f2c7e8c4b8aa469e14f69d5fa1ccf974
 
 name:           discord-hs
 version:        0.1.0.0
@@ -24,7 +24,6 @@ library
       Discord
       Discord.Gateway
       Discord.Main
-      Discord.Monad
       Discord.Rest
       Discord.Rest.Channel
       Discord.Types
@@ -48,7 +47,9 @@ library
     , mtl
     , network
     , polysemy
+    , polysemy-zoo
     , req
+    , stm-chans
     , text
     , time
     , unliftio

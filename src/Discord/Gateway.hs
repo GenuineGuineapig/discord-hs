@@ -1,16 +1,24 @@
 
+{-# language ImpredicativeTypes #-}
+{-# language TemplateHaskell    #-}
+
 module Discord.Gateway
-    ( HasIncomingEvents(..)
-    , startGateway
+    ( Gateway(..)
+    , receiveEvent
+    , runGateway
+    , runGatewayAsInput
     )
     where
 
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as BL
-import           Control.Lens
-import           Control.Monad.Reader
+import           Control.Concurrent.STM.TMChan
+import           Control.Monad.Reader hiding (Reader)
 import qualified Network.WebSockets as WS
-import           UnliftIO hiding (Handler)
+import           Polysemy
+import           Polysemy.IdempotentLowering
+import           Polysemy.Input
+import           UnliftIO hiding (Handler, bracket)
 import           UnliftIO.Concurrent
 import           Wuss
 
@@ -18,25 +26,24 @@ import Discord.Types.Common
 import Discord.Types.Gateway
 
 
-class HasIncomingEvents e where
-    incomingEventsL :: Lens' e (Chan Event)
+data Gateway m a where
+    ReceiveEvent :: Gateway m (Maybe Event)
 
-instance HasIncomingEvents (Chan Event) where
-    incomingEventsL = id
+makeSem ''Gateway
 
-startGateway :: (HasToken e, HasIncomingEvents e, MonadReader e m, MonadUnliftIO m) => ReconnectPolicy -> (Event -> m ()) -> m ()
-startGateway policy handler = do
-    incoming <- view incomingEventsL
+runGatewayAsInput :: Member (Input (Maybe Event)) r => Sem (Gateway ': r) a -> Sem r a
+runGatewayAsInput = interpret $ \case
+    ReceiveEvent -> input
 
-    race_ (runGatewayClient policy)
-          (forever $ handleEvent incoming)
+runGateway :: (Member (Lift IO) r) => Token -> IO (forall a. Sem (Gateway ': r) a -> Sem r a)
+runGateway token = do
+    incoming <- newTMChanIO
 
-    where
+    _ <- forkIO $ runGatewayClient token incoming
 
-    handleEvent incoming = do
-        event <- readChan incoming
-        handler event
-
+    nat $ interpret $ \case
+        ReceiveEvent -> do
+            sendM @IO (atomically (readTMChan incoming))
 
 login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do
@@ -60,24 +67,19 @@ receiveReady conn = do
         _ -> receiveReady conn -- TODO: exception? unexpected message
 
 
-runGatewayClient :: (HasToken e, HasIncomingEvents e, MonadReader e m, MonadIO m) => ReconnectPolicy -> m ()
-runGatewayClient policy = do
-    token    <- view tokenL
-    incoming <- view incomingEventsL
+runGatewayClient :: Token -> TMChan Event -> IO ()
+runGatewayClient token incoming = do
+    flip finally (atomically (closeTMChan incoming)) $
+        forever $ do
+            runSecureClient "gateway.discord.gg" 443 "/" (discordClient token incoming)
+                `catch` \(e :: SomeException) -> do -- TODO: make sure we handle async exceptions here
+                    putStrLn ("Exception in gateway client: " <> show e)
 
-    liftIO $ forever $ do
-        runSecureClient "gateway.discord.gg" 443 "/" (discordClient token incoming)
-            `catch` \(e :: SomeException) -> do
-                putStrLn ("Exception in gateway client: " <> show e)
-                case policy of
-                    ReconnectAlways -> pure ()
-                    ReconnectNever  -> throwIO e
-
-        putStrLn "Lost connection. Reconnecting in 5 seconds..."
-        threadDelay 5_000_000
+            putStrLn "Lost connection. Reconnecting in 5 seconds..."
+            threadDelay 5_000_000
 
 -- TODO: restore sequence numbers when reconnecting
-discordClient :: Token -> Chan Event -> WS.ClientApp ()
+discordClient :: Token -> TMChan Event -> WS.ClientApp ()
 discordClient token incoming conn = do
     heartbeatInterval <- login token conn
     sequenceRef       <- newIORef Nothing
@@ -100,7 +102,7 @@ discordClient token incoming conn = do
             HeartbeatAck -> pure ()
             Dispatch n event -> do
                 writeIORef sequenceRef (Just n)
-                writeChan incoming event
+                atomically $ writeTMChan incoming event
             t -> putStrLn ("UNHANDLED: " <> show t)
         readIncoming sequenceRef
 

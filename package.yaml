@@ -43,7 +43,6 @@ library:
     - Discord
     - Discord.Gateway
     - Discord.Main
-    - Discord.Monad
     - Discord.Rest
     - Discord.Rest.Channel
     - Discord.Types
@@ -60,7 +59,9 @@ library:
     - mtl
     - network
     - polysemy
+    - polysemy-zoo
     - req
+    - stm-chans
     - text
     - time
     - unliftio
