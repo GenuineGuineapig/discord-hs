@@ -4,7 +4,7 @@
 module Discord.Types.Common
     ( Activity(..)
     , Emoji(..)
-    , Embed(..)
+    , MsgEmbed(..)
     , Guild(..)
     , GuildMember(..)
     , HasToken(..)
@@ -202,7 +202,7 @@ instance FromJSON Attachment where
                    <*> obj .:? "height"
                    <*> obj .:? "width"
 
-data Embed = Embed
+data MsgEmbed = MsgEmbed
     { embedTitle       :: Maybe Text
     , embedType        :: Maybe Text
     , embedDescription :: Maybe Text
@@ -218,23 +218,23 @@ data Embed = Embed
     , embedFields      :: Maybe [EmbedField]
     } deriving Show
 
-instance FromJSON Embed where
+instance FromJSON MsgEmbed where
     parseJSON = withObject "Embed" $ \obj ->
-        Embed <$> obj .:? "title"
-              <*> obj .:? "type"
-              <*> obj .:? "description"
-              <*> obj .:? "url"
-              <*> obj .:? "timestamp"
-              <*> obj .:? "color"
-              <*> obj .:? "footer"
-              <*> obj .:? "image"
-              <*> obj .:? "thumbnail"
-              <*> obj .:? "video"
-              <*> obj .:? "provider"
-              <*> obj .:? "author"
-              <*> obj .:? "fields"
+        MsgEmbed <$> obj .:? "title"
+                 <*> obj .:? "type"
+                 <*> obj .:? "description"
+                 <*> obj .:? "url"
+                 <*> obj .:? "timestamp"
+                 <*> obj .:? "color"
+                 <*> obj .:? "footer"
+                 <*> obj .:? "image"
+                 <*> obj .:? "thumbnail"
+                 <*> obj .:? "video"
+                 <*> obj .:? "provider"
+                 <*> obj .:? "author"
+                 <*> obj .:? "fields"
 
-instance ToJSON Embed where
+instance ToJSON MsgEmbed where
     toJSON p = object [ "title"       .= embedTitle p
                       , "type"        .= embedType p
                       , "description" .= embedDescription p
@@ -421,7 +421,7 @@ data Message = Message
     , messageMentions        :: [(User, Maybe GuildMember)]
     , messageMentionRoles    :: [Snowflake Role]
     , messageAttachments     :: [Attachment]
-    , messageEmbeds          :: [Embed]
+    , messageEmbeds          :: [MsgEmbed]
     , messageReactions       :: Maybe [Reaction]
     , messageNonce           :: Maybe SomeSnowflake
     , messagePinned          :: Bool

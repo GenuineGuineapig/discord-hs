@@ -8,7 +8,6 @@ import           Control.Monad.IO.Class
 import qualified Data.Text.IO as TIO
 import           Network.Socket (withSocketsDo)
 import           Polysemy
-import           Polysemy.IdempotentLowering
 
 import Discord
 import Discord.Rest.Channel
@@ -32,30 +31,33 @@ main = withSocketsDo $ do
     runDiscord token $ startGateway ReconnectAlways printEvents
 -}
 
-printEvents :: (Member (Lift IO) r, Member Gateway r) => Sem r ()
+printEvents :: (Member (Embed IO) r, Member Gateway r) => Sem r ()
 printEvents = forever $ do
     event <- receiveEvent
     case event of
-        Just ev -> sendM (print ev)
+        Just ev -> embed (print ev)
         Nothing -> pure ()
 
-pongBot :: (Member (Lift IO) r, Member Request r, Member Gateway r) => Sem r ()
+pongBot :: (Member (Embed IO) r, Member Request r, Member Gateway r) => Sem r ()
 pongBot = forever $ do
     event <- receiveEvent
     case event of
         Just (MessageCreate msg) -> when (messageContent msg == "ping") $ do
             createdMsg <- createMessage (messageChannelId msg) (CreateMessageRequest "pong" Nothing Nothing Nothing)
-            sendM @IO (print createdMsg)
+            embed @IO (print createdMsg)
         _ -> pure ()
 
 main :: IO ()
 main = withSocketsDo $ do
     token <- Token <$> TIO.readFile "../discord.auth"
 
-    runIt <- nat runM .@! runRateLimiting .@! const (runGateway token)
-    let runIt' = runIt . runRequest token
+    runM . requestToIO token $
+        createMessage (Snowflake 574418206144593921) (CreateMessageRequest "test" Nothing Nothing Nothing)
+    --runIt <- nat runM .@! runRateLimiting .@! const (runGateway token)
+    --let runIt' = runIt . runRequest token
 
-    runIt' printEvents
+    --runIt' printEvents
+    undefined
 
 
 

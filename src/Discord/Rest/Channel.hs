@@ -13,7 +13,7 @@ data CreateMessageRequest = CreateMessageRequest -- TODO
     { createMessageContent :: Text
     , createMessageNonce   :: Maybe (Snowflake ())
     , createMessageTts     :: Maybe Bool
-    , createMessageEmbed   :: Maybe Embed
+    , createMessageEmbed   :: Maybe MsgEmbed
     -- TODO createMessageFile        :: ?
     -- TODO createMessagePayloadJson :: ?
     } deriving Show

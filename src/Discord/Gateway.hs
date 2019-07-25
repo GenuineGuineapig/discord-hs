@@ -16,7 +16,6 @@ import           Control.Concurrent.STM.TMChan
 import           Control.Monad.Reader hiding (Reader)
 import qualified Network.WebSockets as WS
 import           Polysemy
-import           Polysemy.IdempotentLowering
 import           Polysemy.Input
 import           UnliftIO hiding (Handler, bracket)
 import           UnliftIO.Concurrent
@@ -35,15 +34,14 @@ runGatewayAsInput :: Member (Input (Maybe Event)) r => Sem (Gateway ': r) a -> S
 runGatewayAsInput = interpret $ \case
     ReceiveEvent -> input
 
-runGateway :: (Member (Lift IO) r) => Token -> IO (forall a. Sem (Gateway ': r) a -> Sem r a)
-runGateway token = do
-    incoming <- newTMChanIO
+runGateway :: (Member (Embed IO) r) => Token -> TMChan Event -> Sem (Gateway ': r) a -> Sem r a
+runGateway token incoming = undefined {- do
 
     _ <- forkIO $ runGatewayClient token incoming
 
     nat $ interpret $ \case
         ReceiveEvent -> do
-            sendM @IO (atomically (readTMChan incoming))
+            embed @IO (atomically (readTMChan incoming)) -}
 
 login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do
