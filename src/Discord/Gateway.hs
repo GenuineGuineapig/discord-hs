@@ -3,10 +3,12 @@
 {-# language TemplateHaskell    #-}
 
 module Discord.Gateway
-    ( Gateway(..)
+    ( Gateway
+    , closeGateway
+    , gatewayToInput
+    , openGateway
     , receiveEvent
-    , runGateway
-    , runGatewayAsInput
+    , withGateway
     )
     where
 
@@ -17,7 +19,8 @@ import           Control.Monad.Reader hiding (Reader)
 import qualified Network.WebSockets as WS
 import           Polysemy
 import           Polysemy.Input
-import           UnliftIO hiding (Handler, bracket)
+import           Polysemy.Resource hiding (finally)
+import           UnliftIO hiding (Handle, Handler, bracket)
 import           UnliftIO.Concurrent
 import           Wuss
 
@@ -30,18 +33,28 @@ data Gateway m a where
 
 makeSem ''Gateway
 
-runGatewayAsInput :: Member (Input (Maybe Event)) r => Sem (Gateway ': r) a -> Sem r a
-runGatewayAsInput = interpret $ \case
-    ReceiveEvent -> input
+gatewayToInput :: Member (Input (Maybe Event)) r => Sem (Gateway ': r) a -> Sem r a
+gatewayToInput = interpret (\ReceiveEvent -> input)
 
-runGateway :: (Member (Embed IO) r) => Token -> TMChan Event -> Sem (Gateway ': r) a -> Sem r a
-runGateway token incoming = undefined {- do
+runGatewayChan :: Member (Embed IO) r => TMChan Event -> Sem (Gateway ': r) a -> Sem r a
+runGatewayChan incoming = runInputSem (embed @IO (atomically (readTMChan incoming))) . reinterpret (\ReceiveEvent -> input)
 
-    _ <- forkIO $ runGatewayClient token incoming
+data Handle = Handle ThreadId (TMChan Event)
 
-    nat $ interpret $ \case
-        ReceiveEvent -> do
-            embed @IO (atomically (readTMChan incoming)) -}
+openGateway :: MonadIO m => Token -> m Handle
+openGateway token = do
+    incoming <- liftIO $ newTMChanIO
+    tid <- liftIO $ forkIO $ runGatewayClient token incoming
+    pure (Handle tid incoming)
+
+closeGateway :: MonadIO m => Handle -> m ()
+closeGateway (Handle tid events) = liftIO $ killThread tid *> atomically (closeTMChan events)
+
+withGateway :: (Member (Embed IO) r, Member Resource r) => Token -> Sem (Gateway ': r) a -> Sem r a
+withGateway token act =
+    bracket (openGateway token)
+            closeGateway
+            (\(Handle _ incoming) -> runGatewayChan incoming act)
 
 login :: Token -> WS.ClientApp Int {- heartbeat interval -}
 login token conn = do
