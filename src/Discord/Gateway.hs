@@ -18,7 +18,8 @@ import           Control.Concurrent
 import qualified Control.Concurrent.Async as A
 import           Control.Concurrent.STM.TMChan
 import qualified Control.Exception as E
-import           Control.Monad.Reader hiding (Reader)
+import           Control.Monad
+import           Control.Monad.IO.Class
 import           Control.Monad.STM
 import           Data.IORef
 import qualified Network.WebSockets as WS

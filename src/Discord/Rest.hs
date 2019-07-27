@@ -14,7 +14,7 @@ module Discord.Rest
 import           Control.Applicative
 import           Control.Concurrent
 import           Control.Exception hiding (bracket)
-import           Control.Monad.Reader hiding (Reader, ask, runReader)
+import           Control.Monad
 import qualified Data.ByteString.Char8 as BS8
 import           Data.CaseInsensitive
 import           Data.Coerce

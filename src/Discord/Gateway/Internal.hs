@@ -15,7 +15,7 @@ import           Data.Typeable (Typeable)
 import           Control.Concurrent
 import qualified Control.Concurrent.Async as A
 import qualified Control.Exception as E
-import           Control.Monad.Reader hiding (Reader)
+import           Control.Monad
 import           Polysemy
 import           Polysemy.Async
 import           Polysemy.Error
