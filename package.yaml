@@ -52,6 +52,7 @@ library:
     - Discord.Types.Gateway
   dependencies:
     - aeson
+    - async
     - bytestring
     - case-insensitive
     - containers
@@ -62,6 +63,7 @@ library:
     - network
     - polysemy ^>=1.0.0.0
     - req
+    - stm
     - stm-chans
     - text
     - time

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 07cf61238648089212ac36afe677bd336085159b3fa9cf5282313ea275805588
+-- hash: e2d39684a4a09f1136587e9941535b62d09aa1fa7818b01effee7b12fd4c71c0
 
 name:           discord-hs
 version:        0.1.0.0
@@ -37,6 +37,7 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -O2 -flate-specialise -fspecialise-aggressively -threaded -with-rtsopts=-N
   build-depends:
       aeson
+    , async
     , base >=4.12.0.0 && <4.13
     , bytestring
     , case-insensitive
@@ -48,6 +49,7 @@ library
     , network
     , polysemy >=1.0.0.0 && <1.1
     , req
+    , stm
     , stm-chans
     , text
     , time

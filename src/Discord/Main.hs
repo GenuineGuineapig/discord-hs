@@ -7,6 +7,7 @@ import           Control.Monad (forever, when)
 import qualified Data.Text.IO as TIO
 import           Network.Socket (withSocketsDo)
 import           Polysemy
+import           Polysemy.Async
 import           Polysemy.Resource
 import           Polysemy.Trace
 
@@ -33,10 +34,11 @@ main :: IO ()
 main = withSocketsDo $ do
     token <- Token <$> TIO.readFile "../discord.auth"
 
-    let runIt = (runM .@ lowerResource)
+    let runIt = (runM .@ lowerResource .@ lowerAsync)
               . traceToIO
               . requestToIO token
+              . withGateway token
 
-    runIt $ withGateway token $ do
+    runIt $ do
         trace "Connecting..."
         traceEvents
