@@ -18,6 +18,7 @@ import           Control.Concurrent.STM.TMChan
 import qualified Control.Exception as E
 import           Control.Monad
 import           Control.Monad.STM
+import           Data.Bifunctor
 import           Data.IORef
 import qualified Network.WebSockets as WS
 import           Polysemy
@@ -129,12 +130,9 @@ discordClient token incoming sessionRef conn = do
 
 readMessage :: ( Member (Embed IO) r
                , Member (Error DiscordException) r
-               ) => WS.Connection -> Sem r GatewayMessage
-readMessage conn = do
-        rawMsg <- embed $ WS.receiveData conn
-        case eitherDecodeStrict rawMsg of
-            Right msg -> pure msg
-            Left err  -> throw $ DecodeException err
+               )
+            => WS.Connection -> Sem r GatewayMessage
+readMessage conn = fromEitherM (first DecodeException . eitherDecodeStrict <$> WS.receiveData conn)
 
 writeMessage :: Member (Embed IO) r => GatewayRequest -> WS.Connection -> Sem r ()
 writeMessage msg conn = embed $ WS.sendTextData conn (encode msg)
