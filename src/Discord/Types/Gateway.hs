@@ -64,7 +64,7 @@ data GatewayMessage = Dispatch Int Event
                     | HeartbeatAck
                     deriving Show
 
-newtype SessionId = SessionId { unSessionId :: Text } deriving (FromJSON, IsString, Show)
+newtype SessionId = SessionId { unSessionId :: Text } deriving (FromJSON, IsString, Eq, Ord, Show)
 
 data Event =
     Ready User [Channel] [UnavailableGuild] SessionId (Maybe [Int]) {- user, private channels, guilds, session, shard info -}

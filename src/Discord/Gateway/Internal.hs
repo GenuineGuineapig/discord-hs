@@ -29,7 +29,7 @@ import Discord.Types.Gateway
 data Session = Session
     { sessionId  :: SessionId
     , sessionSeq :: Int
-    } deriving Show
+    } deriving (Eq, Ord, Show)
 
 discordInSem :: Members
              '[ Embed IO
