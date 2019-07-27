@@ -116,27 +116,11 @@ discordInSem :: Members
 discordInSem token = do
     currentSession <- get
 
-    (heartbeatInterval, session) <- handshake currentSession token
-
-    put @(Maybe Session) (Just session)
+    (heartbeatInterval, sid) <- handshake currentSession token
 
     task <- async (heartbeat heartbeatInterval)
 
-    flip finally (embed (A.cancel task)) $ forever $ do
-        msg <- input
-        case msg of
-            HeartbeatAck -> pure ()
-            IncomingHeartbeat -> pure ()
-
-            Dispatch n event -> do
-                modify @(Maybe Session) (fmap (\s -> s { sessionSeq = Just n }))
-                output @Event event
-
-            Hello _ -> throw UnexpectedHelloException
-            InvalidSession resumable -> do
-                when (not resumable) (put @(Maybe Session) Nothing)
-                throw InvalidSessionException
-            Reconnect -> throw ReconnectException
+    eventLoop sid `finally` embed (A.cancel task)
 
     where
 
@@ -148,13 +132,38 @@ discordInSem token = do
               => Int -> Sem r ()
     heartbeat interval = forever $ do
         session <- get
-        output (OutgoingHeartbeat (sessionSeq =<< session))
+        output (OutgoingHeartbeat (sessionSeq <$> session))
         -- ew, embed.
         embed $ threadDelay (interval * 1000)
 
+eventLoop :: Members
+          '[ Error DiscordException
+           , Input GatewayMessage
+           , Output Event
+           , Output GatewayRequest
+           , State (Maybe Session)
+           , Trace
+           ] r
+          => SessionId -> Sem r ()
+eventLoop sid = forever $ do
+    msg <- input
+    case msg of
+        HeartbeatAck -> pure ()
+        IncomingHeartbeat -> pure ()
+
+        Dispatch n event -> do
+            put @(Maybe Session) (Just (Session sid n))
+            output @Event event
+
+        Hello _ -> throw UnexpectedHelloException
+        InvalidSession resumable -> do
+            when (not resumable) (put @(Maybe Session) Nothing)
+            throw InvalidSessionException
+        Reconnect -> throw ReconnectException
+
 data Session = Session
     { sessionId  :: SessionId
-    , sessionSeq :: Maybe Int
+    , sessionSeq :: Int
     } deriving Show
 
 handshake :: Members
@@ -162,7 +171,7 @@ handshake :: Members
            , Input GatewayMessage
            , Output GatewayRequest
            ] r
-          => Maybe Session -> Token -> Sem r (Int, Session)
+          => Maybe Session -> Token -> Sem r (Int, SessionId)
 handshake currentSession token = do
     msg <- input
 
@@ -171,25 +180,26 @@ handshake currentSession token = do
         ev -> throw (ExpectedButFound "Hello" ev)
 
     session <- case currentSession of
-        Just session@(Session sid (Just seqId)) -> resume token sid seqId *> pure session
+        Just session -> resume token session *> pure (sessionId session)
         _ -> login token
 
     pure (interval, session)
 
-resume :: Member (Output GatewayRequest) r => Token -> SessionId -> Int -> Sem r ()
-resume token sid seqId = output (Resume token sid seqId)
+resume :: Member (Output GatewayRequest) r => Token -> Session -> Sem r ()
+resume token session =
+    output (Resume token (sessionId session) (sessionSeq session))
 
 login :: Members
       '[ Error DiscordException
        , Input GatewayMessage
        , Output GatewayRequest
        ] r
-      => Token -> Sem r Session
+      => Token -> Sem r SessionId
 login token = do
     output (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs") Nothing Nothing Nothing Nothing)
 
     input >>= \case
-        Dispatch _ (Ready _ _ _ sid _) -> pure (Session sid Nothing)
+        Dispatch _ (Ready _ _ _ sid _) -> pure sid
         ev -> throw (ExpectedButFound "Ready" ev)
 
 readMessage :: WS.ClientApp GatewayMessage
