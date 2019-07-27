@@ -1,6 +1,4 @@
 
-{-# language ImpredicativeTypes #-}
-
 module Discord.Main where
 
 import           Control.Monad (forever, when)

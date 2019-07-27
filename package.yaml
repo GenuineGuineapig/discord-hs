@@ -59,7 +59,6 @@ library:
     - containers
     - http-client
     - http-types
-    - mtl
     - network
     - polysemy ^>=1.0.0.0
     - req

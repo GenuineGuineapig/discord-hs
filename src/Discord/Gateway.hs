@@ -1,5 +1,5 @@
 
-{-# language TemplateHaskell    #-}
+{-# language TemplateHaskell #-}
 
 module Discord.Gateway
     ( Gateway
@@ -12,13 +12,11 @@ module Discord.Gateway
     where
 
 import           Data.Aeson
-import qualified Data.ByteString as BS
 import           Control.Concurrent
 import qualified Control.Concurrent.Async as A
 import           Control.Concurrent.STM.TMChan
 import qualified Control.Exception as E
 import           Control.Monad
-import           Control.Monad.IO.Class
 import           Control.Monad.STM
 import           Data.IORef
 import qualified Network.WebSockets as WS
@@ -79,9 +77,9 @@ openGateway token = do
     task <- async $ runClientApp token incoming
     pure (Handle task incoming)
 
-closeGateway :: MonadIO m => Handle -> m ()
+closeGateway :: Member (Embed IO) r => Handle -> Sem r ()
 closeGateway (Handle task events) =
-    liftIO $ A.cancel task *> atomically (closeTMChan events)
+    embed $ A.cancel task *> atomically (closeTMChan events)
 
 runClientApp :: Members
              '[ Embed IO
@@ -97,7 +95,7 @@ runClientApp token incoming = do
                 `E.catch` \(e :: E.SomeException) ->
                     if isSyncException e
                       then putStrLn ("Exception in gateway client: " <> show e)
-                      else E.throw e
+                      else E.throwIO e
 
             -- TODO: trace?
             embed $ putStrLn "Lost connection. Reconnecting in 5 seconds..."
@@ -122,22 +120,24 @@ discordClient token incoming sessionRef conn = do
           . traceToIO
 
     -- Input GatewayMessage, Output GatewayRequest, Output Event
-    inputFromWs  = runInputSem  $       embed (readMessage conn)
-    outputToWs   = runOutputSem $ \a -> embed (writeMessage a conn)
+    inputFromWs  = runInputSem  $       readMessage conn
+    outputToWs   = runOutputSem $ \a -> writeMessage a conn
     outputEvents = runOutputSem $ \a -> embed (atomically (writeTMChan incoming a))
 
     runOutputSem :: (o -> Sem r ()) -> Sem (Output o ': r) a -> Sem r a
     runOutputSem act = interpret (\(Output o) -> act o)
 
-readMessage :: WS.Connection -> IO GatewayMessage
+readMessage :: ( Member (Embed IO) r
+               , Member (Error DiscordException) r
+               ) => WS.Connection -> Sem r GatewayMessage
 readMessage conn = do
-        rawMsg <- WS.receiveData conn :: IO BS.ByteString
+        rawMsg <- embed $ WS.receiveData conn
         case eitherDecodeStrict rawMsg of
             Right msg -> pure msg
-            Left err  -> E.throwIO $ DecodeException ("Error decoding message: " <> err)
+            Left err  -> throw $ DecodeException err
 
-writeMessage :: GatewayRequest -> WS.Connection -> IO ()
-writeMessage msg conn = WS.sendTextData conn (encode msg)
+writeMessage :: Member (Embed IO) r => GatewayRequest -> WS.Connection -> Sem r ()
+writeMessage msg conn = embed $ WS.sendTextData conn (encode msg)
 
 -- why isn't this in Control.Exception
 isSyncException :: E.Exception e => e -> Bool

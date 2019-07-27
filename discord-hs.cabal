@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e21dbb8c6899ca4763b9529b72e877de094a699e3e48e466416b56246de92e96
+-- hash: 6cc84ef97a0c7c4e5bcd8a66b7da9826065f77e3af1d2a234c982fa352a35ab9
 
 name:           discord-hs
 version:        0.1.0.0
@@ -45,7 +45,6 @@ library
     , containers
     , http-client
     , http-types
-    , mtl
     , network
     , polysemy >=1.0.0.0 && <1.1
     , req

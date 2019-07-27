@@ -1,5 +1,5 @@
 
-{-# language TemplateHaskell    #-}
+{-# language TemplateHaskell #-}
 
 module Discord.Rest
     ( RateLimits(..)
