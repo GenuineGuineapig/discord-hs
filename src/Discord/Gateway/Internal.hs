@@ -70,7 +70,6 @@ eventLoop :: Members
           '[ Error DiscordException
            , Input GatewayMessage
            , Output Event
-           , Output GatewayRequest
            , State (Maybe Session)
            , Trace
            ] r
