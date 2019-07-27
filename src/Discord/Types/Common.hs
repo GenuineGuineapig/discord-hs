@@ -1,6 +1,4 @@
 
-{-# language StandaloneDeriving #-}
-
 module Discord.Types.Common
     ( Activity(..)
     , Emoji(..)

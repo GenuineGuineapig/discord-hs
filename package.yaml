@@ -17,6 +17,8 @@ ghc-options:
   - -O2
   - -flate-specialise
   - -fspecialise-aggressively
+  - -threaded
+  - -with-rtsopts=-N
 
 dependencies:
   - base ^>=4.12.0.0
