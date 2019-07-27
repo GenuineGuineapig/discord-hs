@@ -1,5 +1,4 @@
 
-{-# language ImpredicativeTypes #-}
 {-# language TemplateHaskell    #-}
 
 module Discord.Gateway

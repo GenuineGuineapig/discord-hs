@@ -1,7 +1,4 @@
 
-{-# language ImpredicativeTypes #-}
-{-# language TemplateHaskell    #-}
-
 module Discord.Gateway.Internal
     ( DiscordException(..)
     , Session(..)
