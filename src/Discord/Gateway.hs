@@ -14,16 +14,18 @@ module Discord.Gateway
 
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as BL
+import           Data.Typeable (Typeable)
 import           Control.Concurrent
 import qualified Control.Concurrent.Async as A
 import           Control.Concurrent.STM.TMChan
-import           Control.Exception hiding (bracket, finally)
+import qualified Control.Exception as E
 import           Control.Monad.Reader hiding (Reader)
 import           Control.Monad.STM
 import           Data.IORef
 import qualified Network.WebSockets as WS
 import           Polysemy
 import           Polysemy.Async
+import           Polysemy.Error
 import           Polysemy.Input
 import           Polysemy.Output
 import           Polysemy.Resource
@@ -60,14 +62,14 @@ closeGateway (Handle task events) = liftIO $ A.cancel task *> atomically (closeT
 runGatewayClient :: (Member (Embed IO) r, Member Resource r) => Token -> TMChan Event -> Sem r ()
 runGatewayClient token incoming = do
     flip finally (embed $ atomically (closeTMChan incoming)) $ do
-        sequenceRef <- embed $ newIORef Nothing
+        sessionRef <- embed $ newIORef Nothing
 
         forever $ do
-            embed $ runSecureClient "gateway.discord.gg" 443 "/" (discordClient token incoming sequenceRef)
-                `catch` \(e :: SomeException) ->
+            embed $ runSecureClient "gateway.discord.gg" 443 "/" (discordClient token incoming sessionRef)
+                `E.catch` \(e :: E.SomeException) ->
                     if isSyncException e
                       then putStrLn ("Exception in gateway client: " <> show e)
-                      else throw e
+                      else E.throw e
 
             -- TODO: trace?
             embed $ putStrLn "Lost connection. Reconnecting in 5 seconds..."
@@ -80,9 +82,9 @@ withGateway token act =
             (\(Handle _ incoming) -> runGatewayChan incoming act)
 
 
--- TODO: add more info in the IORef: reconnect token, etc
-discordClient :: Token -> TMChan Event -> IORef (Maybe Int) -> WS.ClientApp ()
-discordClient token incoming sequenceRef conn = runIt (discordInSem token)
+discordClient :: Token -> TMChan Event -> IORef (Maybe Session) -> WS.ClientApp ()
+discordClient token incoming sessionRef conn = do
+    runIt (discordInSem token) >>= either E.throwIO pure
 
     where
 
@@ -92,8 +94,8 @@ discordClient token incoming sequenceRef conn = runIt (discordInSem token)
     outputToChan :: Member (Embed IO) r => Sem (Output Event ': r) a -> Sem r a
     outputToChan = interpret (\(Output a) -> embed $ atomically (writeTMChan incoming a))
 
-    runIt = (runM .@ lowerResource .@ lowerAsync)
-          . runStateIORef sequenceRef
+    runIt = (runM .@ lowerResource .@ lowerAsync .@@ lowerError @DiscordException)
+          . runStateIORef sessionRef
           . outputToChan
           . outputToWs
           . runInputSem (embed $ readMessage conn)
@@ -102,16 +104,21 @@ discordClient token incoming sequenceRef conn = runIt (discordInSem token)
 discordInSem :: Members
              '[ Embed IO
               , Async
+              , Error DiscordException
               , Resource
               , Input GatewayMessage -- incoming messages
               , Output Event -- events to pass to user code
               , Output GatewayRequest -- outgoing messages
-              , State (Maybe Int) -- sequence number
+              , State (Maybe Session)
               , Trace
               ] r
              => Token -> Sem r ()
 discordInSem token = do
-    heartbeatInterval <- login token
+    currentSession <- get
+
+    (heartbeatInterval, session) <- handshake currentSession token
+
+    put @(Maybe Session) (Just session)
 
     task <- async (heartbeat heartbeatInterval)
 
@@ -119,64 +126,95 @@ discordInSem token = do
         msg <- input
         case msg of
             HeartbeatAck -> pure ()
+            IncomingHeartbeat -> pure ()
+
             Dispatch n event -> do
-                put (Just n)
+                modify @(Maybe Session) (fmap (\s -> s { sessionSeq = Just n }))
                 output @Event event
-            t -> trace ("UNHANDLED: " <> show t)
+
+            Hello _ -> throw UnexpectedHelloException
+            InvalidSession resumable -> do
+                when (not resumable) (put @(Maybe Session) Nothing)
+                throw InvalidSessionException
+            Reconnect -> throw ReconnectException
 
     where
 
     heartbeat :: Members
               '[ Embed IO
                , Output GatewayRequest
-               , State (Maybe Int) -- sequence number
+               , State (Maybe Session) -- sequence number
                ] r
               => Int -> Sem r ()
     heartbeat interval = forever $ do
-        currentSeq <- get
-        output (OutgoingHeartbeat currentSeq)
+        session <- get
+        output (OutgoingHeartbeat (sessionSeq =<< session))
         -- ew, embed.
         embed $ threadDelay (interval * 1000)
 
-login :: Members '[Input GatewayMessage, Output GatewayRequest] r
-      => Token -> Sem r Int
+data Session = Session
+    { sessionId  :: SessionId
+    , sessionSeq :: Maybe Int
+    } deriving Show
+
+handshake :: Members
+          '[ Error DiscordException
+           , Input GatewayMessage
+           , Output GatewayRequest
+           ] r
+          => Maybe Session -> Token -> Sem r (Int, Session)
+handshake currentSession token = do
+    msg <- input
+
+    interval <- case msg of
+        Hello heartbeatInterval -> pure heartbeatInterval
+        ev -> throw (ExpectedButFound "Hello" ev)
+
+    session <- case currentSession of
+        Just session@(Session sid (Just seqId)) -> resume token sid seqId *> pure session
+        _ -> login token
+
+    pure (interval, session)
+
+resume :: Member (Output GatewayRequest) r => Token -> SessionId -> Int -> Sem r ()
+resume token sid seqId = output (Resume token sid seqId)
+
+login :: Members
+      '[ Error DiscordException
+       , Input GatewayMessage
+       , Output GatewayRequest
+       ] r
+      => Token -> Sem r Session
 login token = do
-    heartbeatInterval <- receiveHello
     output (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs") Nothing Nothing Nothing Nothing)
-    _ <- receiveReady -- TODO: unpack cache values?
-    pure heartbeatInterval
 
-receiveHello :: Member (Input GatewayMessage) r => Sem r Int
-receiveHello = do
-    msg <- input
-    case msg of
-        Hello interval -> pure interval
-        _ -> receiveHello -- TODO: exception? unexpected message
-
-receiveReady :: Member (Input GatewayMessage) r => Sem r Event
-receiveReady = do
-    msg <- input
-    case msg of
-        Dispatch _ event@Ready{} -> pure event
-        _ -> receiveReady -- TODO: exception? unexpected message
+    input >>= \case
+        Dispatch _ (Ready _ _ _ sid _) -> pure (Session sid Nothing)
+        ev -> throw (ExpectedButFound "Ready" ev)
 
 readMessage :: WS.ClientApp GatewayMessage
 readMessage conn = do
         rawMsg <- WS.receiveData conn :: IO BL.ByteString
         case eitherDecode rawMsg of
             Right msg -> pure msg
-            Left err  -> throwIO $ DecodeException ("Error decoding message: " <> err)
+            Left err  -> E.throwIO $ DecodeException ("Error decoding message: " <> err)
 
 writeMessage :: GatewayRequest -> WS.ClientApp ()
 writeMessage msg conn = WS.sendTextData conn (encode msg)
 
-data DiscordException = DecodeException String deriving Show
+data DiscordException =
+    DecodeException String
+  | ExpectedButFound String GatewayMessage
+  | InvalidSessionException
+  | ReconnectException -- discord told us to reconnect
+  | UnexpectedHelloException -- discord sent a hello after the handshake
+    deriving (Show, Typeable)
 
-instance Exception DiscordException
+instance E.Exception DiscordException
 
 -- why isn't this in Control.Exception
-isSyncException :: Exception e => e -> Bool
+isSyncException :: E.Exception e => e -> Bool
 isSyncException e =
-    case fromException (toException e) of
-        Just (SomeAsyncException _) -> False
+    case E.fromException (E.toException e) of
+        Just (E.SomeAsyncException _) -> False
         Nothing -> True

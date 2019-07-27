@@ -5,6 +5,7 @@ module Discord.Types.Gateway
     , GatewayRequest(..)
     , GatewayMessage(..)
     , ReconnectPolicy(..)
+    , SessionId(..)
     , Token(..)
     )
     where
@@ -26,7 +27,7 @@ data ReconnectPolicy =
 -- Gateway requests
 
 data GatewayRequest = Identify Token ConnectionProps (Maybe Bool) (Maybe Int) (Maybe [Int]) (Maybe Presence) {- token, props, compress, large threshold, shard, presence -}
-                    | Resume Token Text Int {- token, session ID, last sequence number received-}
+                    | Resume Token SessionId Int {- token, session ID, last sequence number received-}
                     | OutgoingHeartbeat (Maybe Int)
                     | RequestGuildMembers [Snowflake Guild] Text Int {- guilds, query (prefix), limit -}
                     | UpdateVoiceState (Snowflake Guild) (Maybe (Snowflake Channel)) Bool Bool {- guild, channel, mute, deaf -}
@@ -49,7 +50,7 @@ instance ToJSON GatewayRequest where
         Identify token props compress large shard presence -> gatewayReq 2 $ object $ filter (\(_,v) -> v /= Null) ["token" .= token, "properties" .= props, "compress" .= compress, "large_threshold" .= large, "shard" .= shard, "presence" .= presence]
         UpdateStatus presence                              -> gatewayReq 3 $ toJSON presence
         UpdateVoiceState guild channel mute deaf           -> gatewayReq 4 $ object ["guild_id" .= guild, "channel_id" .= channel, "self_mute" .= mute, "self_deaf" .= deaf]
-        Resume token sessionId msgId                       -> gatewayReq 6 $ object ["token" .= token, "session_id" .= sessionId, "seq" .= msgId]
+        Resume token sessionId msgId                       -> gatewayReq 6 $ object ["token" .= token, "session_id" .= unSessionId sessionId, "seq" .= msgId]
         RequestGuildMembers guild query limit              -> gatewayReq 8 $ object ["guild_id" .= guild, "query" .= query, "limit" .= limit]
 
 
