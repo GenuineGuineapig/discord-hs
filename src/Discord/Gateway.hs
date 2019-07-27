@@ -4,6 +4,7 @@
 
 module Discord.Gateway
     ( Gateway
+    , Handle(..)
     , closeGateway
     , gatewayToInput
     , openGateway
@@ -14,7 +15,6 @@ module Discord.Gateway
 
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as BL
-import           Data.Typeable (Typeable)
 import           Control.Concurrent
 import qualified Control.Concurrent.Async as A
 import           Control.Concurrent.STM.TMChan
@@ -33,6 +33,7 @@ import           Polysemy.State
 import           Polysemy.Trace
 import           Wuss
 
+import Discord.Gateway.Internal
 import Discord.Types.Common
 import Discord.Types.Gateway
 
@@ -45,22 +46,28 @@ makeSem ''Gateway
 gatewayToInput :: Member (Input (Maybe Event)) r => Sem (Gateway ': r) a -> Sem r a
 gatewayToInput = interpret (\ReceiveEvent -> input)
 
-runGatewayChan :: Member (Embed IO) r => TMChan Event -> Sem (Gateway ': r) a -> Sem r a
-runGatewayChan incoming = runInputSem (embed @IO (atomically (readTMChan incoming))) . reinterpret (\ReceiveEvent -> input)
+withGateway :: (Member (Embed IO) r, Member Async r, Member Resource r) => Token -> Sem (Gateway ': r) a -> Sem r a
+withGateway token act =
+    bracket (openGateway token)
+            closeGateway
+            (\(Handle _ incoming) -> inputFromChan incoming act)
+
+inputFromChan :: Member (Embed IO) r => TMChan Event -> Sem (Gateway ': r) a -> Sem r a
+inputFromChan incoming = runInputSem (embed @IO (atomically (readTMChan incoming))) . reinterpret (\ReceiveEvent -> input)
 
 data Handle = Handle (A.Async (Maybe ())) (TMChan Event)
 
 openGateway :: (Member (Embed IO) r, Member Async r, Member Resource r) => Token -> Sem r Handle
 openGateway token = do
     incoming <- embed $ newTMChanIO
-    task <- async $ runGatewayClient token incoming
+    task <- async $ runWsClient token incoming
     pure (Handle task incoming)
 
 closeGateway :: MonadIO m => Handle -> m ()
 closeGateway (Handle task events) = liftIO $ A.cancel task *> atomically (closeTMChan events)
 
-runGatewayClient :: (Member (Embed IO) r, Member Resource r) => Token -> TMChan Event -> Sem r ()
-runGatewayClient token incoming = do
+runWsClient :: (Member (Embed IO) r, Member Resource r) => Token -> TMChan Event -> Sem r ()
+runWsClient token incoming = do
     flip finally (embed $ atomically (closeTMChan incoming)) $ do
         sessionRef <- embed $ newIORef Nothing
 
@@ -74,12 +81,6 @@ runGatewayClient token incoming = do
             -- TODO: trace?
             embed $ putStrLn "Lost connection. Reconnecting in 5 seconds..."
             embed $ threadDelay 5_000_000
-
-withGateway :: (Member (Embed IO) r, Member Async r, Member Resource r) => Token -> Sem (Gateway ': r) a -> Sem r a
-withGateway token act =
-    bracket (openGateway token)
-            closeGateway
-            (\(Handle _ incoming) -> runGatewayChan incoming act)
 
 
 discordClient :: Token -> TMChan Event -> IORef (Maybe Session) -> WS.ClientApp ()
@@ -101,107 +102,6 @@ discordClient token incoming sessionRef conn = do
           . runInputSem (embed $ readMessage conn)
           . traceToIO
 
-discordInSem :: Members
-             '[ Embed IO
-              , Async
-              , Error DiscordException
-              , Resource
-              , Input GatewayMessage -- incoming messages
-              , Output Event -- events to pass to user code
-              , Output GatewayRequest -- outgoing messages
-              , State (Maybe Session)
-              , Trace
-              ] r
-             => Token -> Sem r ()
-discordInSem token = do
-    currentSession <- get
-
-    (heartbeatInterval, sid) <- handshake currentSession token
-
-    task <- async (heartbeat heartbeatInterval)
-
-    eventLoop sid `finally` embed (A.cancel task)
-
-    where
-
-    heartbeat :: Members
-              '[ Embed IO
-               , Output GatewayRequest
-               , State (Maybe Session) -- sequence number
-               ] r
-              => Int -> Sem r ()
-    heartbeat interval = forever $ do
-        session <- get
-        output (OutgoingHeartbeat (sessionSeq <$> session))
-        -- ew, embed.
-        embed $ threadDelay (interval * 1000)
-
-eventLoop :: Members
-          '[ Error DiscordException
-           , Input GatewayMessage
-           , Output Event
-           , Output GatewayRequest
-           , State (Maybe Session)
-           , Trace
-           ] r
-          => SessionId -> Sem r ()
-eventLoop sid = forever $ do
-    msg <- input
-    case msg of
-        HeartbeatAck -> pure ()
-        IncomingHeartbeat -> pure ()
-
-        Dispatch n event -> do
-            put @(Maybe Session) (Just (Session sid n))
-            output @Event event
-
-        Hello _ -> throw UnexpectedHelloException
-        InvalidSession resumable -> do
-            when (not resumable) (put @(Maybe Session) Nothing)
-            throw InvalidSessionException
-        Reconnect -> throw ReconnectException
-
-data Session = Session
-    { sessionId  :: SessionId
-    , sessionSeq :: Int
-    } deriving Show
-
-handshake :: Members
-          '[ Error DiscordException
-           , Input GatewayMessage
-           , Output GatewayRequest
-           ] r
-          => Maybe Session -> Token -> Sem r (Int, SessionId)
-handshake currentSession token = do
-    msg <- input
-
-    interval <- case msg of
-        Hello heartbeatInterval -> pure heartbeatInterval
-        ev -> throw (ExpectedButFound "Hello" ev)
-
-    session <- case currentSession of
-        Just session -> resume token session *> pure (sessionId session)
-        _ -> login token
-
-    pure (interval, session)
-
-resume :: Member (Output GatewayRequest) r => Token -> Session -> Sem r ()
-resume token session =
-    output (Resume token (sessionId session) (sessionSeq session))
-
-login :: Members
-      '[ Error DiscordException
-       , Input GatewayMessage
-       , Output GatewayRequest
-       ] r
-      => Token -> Sem r SessionId
-login token = do
-    output (Identify token (ConnectionProps "linux" "discord-hs" "discord-hs") Nothing Nothing Nothing Nothing)
-
-    input >>= \case
-        Dispatch _ (Ready _ _ _ sid _) -> pure sid
-        ev -> throw (ExpectedButFound "Ready" ev)
-
 readMessage :: WS.ClientApp GatewayMessage
 readMessage conn = do
         rawMsg <- WS.receiveData conn :: IO BL.ByteString
@@ -211,16 +111,6 @@ readMessage conn = do
 
 writeMessage :: GatewayRequest -> WS.ClientApp ()
 writeMessage msg conn = WS.sendTextData conn (encode msg)
-
-data DiscordException =
-    DecodeException String
-  | ExpectedButFound String GatewayMessage
-  | InvalidSessionException
-  | ReconnectException -- discord told us to reconnect
-  | UnexpectedHelloException -- discord sent a hello after the handshake
-    deriving (Show, Typeable)
-
-instance E.Exception DiscordException
 
 -- why isn't this in Control.Exception
 isSyncException :: E.Exception e => e -> Bool

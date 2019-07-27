@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e2d39684a4a09f1136587e9941535b62d09aa1fa7818b01effee7b12fd4c71c0
+-- hash: 2beb941ad52fa3294298bfa1b6b031d52a4bc9d25cbe99ab163f02cb79de8be4
 
 name:           discord-hs
 version:        0.1.0.0
@@ -23,6 +23,7 @@ library
   exposed-modules:
       Discord
       Discord.Gateway
+      Discord.Gateway.Internal
       Discord.Main
       Discord.Rest
       Discord.Rest.Channel

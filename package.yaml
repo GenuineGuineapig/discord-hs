@@ -44,6 +44,7 @@ library:
   exposed-modules:
     - Discord
     - Discord.Gateway
+    - Discord.Gateway.Internal
     - Discord.Main
     - Discord.Rest
     - Discord.Rest.Channel
