@@ -6,7 +6,6 @@ module Discord.Gateway
     ( Gateway
     , Handle(..)
     , closeGateway
-    , gatewayToInput
     , openGateway
     , receiveEvent
     , withGateway
@@ -14,7 +13,7 @@ module Discord.Gateway
     where
 
 import           Data.Aeson
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString as BS
 import           Control.Concurrent
 import qualified Control.Concurrent.Async as A
 import           Control.Concurrent.STM.TMChan
@@ -38,36 +37,58 @@ import Discord.Types.Common
 import Discord.Types.Gateway
 
 
+-- An effect for receiving events from the Discord Gateway
+-- receiveEvent will produce Nothing after the gateway terminates
 data Gateway m a where
     ReceiveEvent :: Gateway m (Maybe Event)
 
 makeSem ''Gateway
 
-gatewayToInput :: Member (Input (Maybe Event)) r => Sem (Gateway ': r) a -> Sem r a
-gatewayToInput = interpret (\ReceiveEvent -> input)
+-- Spawn a gateway client thread and use it to interpret the Gateway effect
+withGateway :: forall r a.
+               Members
+            '[ Embed IO
+             , Async
+             , Resource
+             ] r
+            => Token -> Sem (Gateway ': r) a -> Sem r a
+withGateway token act = bracket
+    (openGateway token)
+    closeGateway
+    (\(Handle _ incoming) -> inputFromChan incoming act)
 
-withGateway :: (Member (Embed IO) r, Member Async r, Member Resource r) => Token -> Sem (Gateway ': r) a -> Sem r a
-withGateway token act =
-    bracket (openGateway token)
-            closeGateway
-            (\(Handle _ incoming) -> inputFromChan incoming act)
+    where
 
-inputFromChan :: Member (Embed IO) r => TMChan Event -> Sem (Gateway ': r) a -> Sem r a
-inputFromChan incoming = runInputSem (embed @IO (atomically (readTMChan incoming))) . reinterpret (\ReceiveEvent -> input)
+    inputFromChan :: TMChan Event -> Sem (Gateway ': r) a -> Sem r a
+    inputFromChan incoming =
+        interpret (\ReceiveEvent -> embed (atomically (readTMChan incoming)))
 
-data Handle = Handle (A.Async (Maybe ())) (TMChan Event)
+---------- Raw gateway operations
 
-openGateway :: (Member (Embed IO) r, Member Async r, Member Resource r) => Token -> Sem r Handle
+data Handle = Handle (A.Async (Maybe ())) -- client thread
+                     (TMChan Event) -- incoming events
+
+openGateway :: Members
+            '[ Embed IO
+             , Async
+             , Resource
+             ] r
+            => Token -> Sem r Handle
 openGateway token = do
     incoming <- embed $ newTMChanIO
-    task <- async $ runWsClient token incoming
+    task <- async $ runClientApp token incoming
     pure (Handle task incoming)
 
 closeGateway :: MonadIO m => Handle -> m ()
-closeGateway (Handle task events) = liftIO $ A.cancel task *> atomically (closeTMChan events)
+closeGateway (Handle task events) =
+    liftIO $ A.cancel task *> atomically (closeTMChan events)
 
-runWsClient :: (Member (Embed IO) r, Member Resource r) => Token -> TMChan Event -> Sem r ()
-runWsClient token incoming = do
+runClientApp :: Members
+             '[ Embed IO
+              , Resource
+              ] r
+             => Token -> TMChan Event -> Sem r ()
+runClientApp token incoming = do
     flip finally (embed $ atomically (closeTMChan incoming)) $ do
         sessionRef <- embed $ newIORef Nothing
 
@@ -82,34 +103,40 @@ runWsClient token incoming = do
             embed $ putStrLn "Lost connection. Reconnecting in 5 seconds..."
             embed $ threadDelay 5_000_000
 
+---------- Wrap discord Sem client into a websocket app
 
-discordClient :: Token -> TMChan Event -> IORef (Maybe Session) -> WS.ClientApp ()
+discordClient :: Token
+              -> TMChan Event -- incoming events chan
+              -> IORef (Maybe Session) -- persistent session state for reconnections
+              -> WS.ClientApp ()
 discordClient token incoming sessionRef conn = do
     runIt (discordInSem token) >>= either E.throwIO pure
 
     where
 
-    outputToWs :: Member (Embed IO) r => Sem (Output GatewayRequest ': r) a -> Sem r a
-    outputToWs = interpret (\(Output a) -> embed $ writeMessage a conn)
-
-    outputToChan :: Member (Embed IO) r => Sem (Output Event ': r) a -> Sem r a
-    outputToChan = interpret (\(Output a) -> embed $ atomically (writeTMChan incoming a))
-
     runIt = (runM .@ lowerResource .@ lowerAsync .@@ lowerError @DiscordException)
           . runStateIORef sessionRef
-          . outputToChan
+          . outputEvents
           . outputToWs
-          . runInputSem (embed $ readMessage conn)
+          . inputFromWs
           . traceToIO
 
-readMessage :: WS.ClientApp GatewayMessage
+    -- Input GatewayMessage, Output GatewayRequest, Output Event
+    inputFromWs  = runInputSem  $       embed (readMessage conn)
+    outputToWs   = runOutputSem $ \a -> embed (writeMessage a conn)
+    outputEvents = runOutputSem $ \a -> embed (atomically (writeTMChan incoming a))
+
+    runOutputSem :: (o -> Sem r ()) -> Sem (Output o ': r) a -> Sem r a
+    runOutputSem act = interpret (\(Output o) -> act o)
+
+readMessage :: WS.Connection -> IO GatewayMessage
 readMessage conn = do
-        rawMsg <- WS.receiveData conn :: IO BL.ByteString
-        case eitherDecode rawMsg of
+        rawMsg <- WS.receiveData conn :: IO BS.ByteString
+        case eitherDecodeStrict rawMsg of
             Right msg -> pure msg
             Left err  -> E.throwIO $ DecodeException ("Error decoding message: " <> err)
 
-writeMessage :: GatewayRequest -> WS.ClientApp ()
+writeMessage :: GatewayRequest -> WS.Connection -> IO ()
 writeMessage msg conn = WS.sendTextData conn (encode msg)
 
 -- why isn't this in Control.Exception

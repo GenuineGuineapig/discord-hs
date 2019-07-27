@@ -7,6 +7,7 @@ module Discord.Rest
     , Request(..)
     , createMessage
     , requestToIO
+    , usingRateLimits
     )
     where
 
@@ -42,7 +43,25 @@ data Request m a where
 
 makeSem ''Request
 
-usingRateLimits :: (Member (Embed IO) r, Member (State RateLimits) r, HttpResponse resp) => Text -> Maybe (Snowflake x) -> IO resp -> Sem r resp
+
+requestToIO :: Member (Embed IO) r => Token -> Sem (Request ': r) a -> Sem r a
+requestToIO token = evalState newRateLimits . reinterpret (\case
+    CreateMessage channel create ->
+        fmap responseBody . usingRateLimits "CreateMessage" (Just channel) $ runReq defaultHttpConfig $
+            req POST
+                (baseUrl /: "channels" /~ unSnowflake channel /: "messages")
+                (ReqBodyJson create)
+                jsonResponse
+                headers)
+    where
+    headers :: Option 'Https
+    headers = header "Authorization" ("Bot " <> encodeUtf8 (unToken token))
+
+
+usingRateLimits :: ( Member (Embed IO) r
+                   , Member (State RateLimits) r
+                   , HttpResponse resp
+                   ) => Text -> Maybe (Snowflake x) -> IO resp -> Sem r resp
 usingRateLimits url major action = do
     RateLimits global routes <- get
     currentTime <- embed $ getCurrentTimeEpochSeconds
@@ -78,19 +97,6 @@ usingRateLimits url major action = do
     updateLimits (RateLimit RLRoute time) =
         modify (\limits -> limits { routeResets = (M.insert (url, coerce major) time (routeResets limits))})
 
-requestToIO :: (Member (Embed IO) r) => Token -> Sem (Request ': r) a -> Sem r a
-requestToIO token = evalState newRateLimits . reinterpret (\case
-    CreateMessage channel create ->
-        fmap responseBody . usingRateLimits "CreateMessage" (Just channel) $ runReq defaultHttpConfig $
-            req POST
-                (baseUrl /: "channels" /~ unSnowflake channel /: "messages")
-                (ReqBodyJson create)
-                jsonResponse
-                headers)
-    where
-    headers :: Option 'Https
-    headers = header "Authorization" ("Bot " <> encodeUtf8 (unToken token))
-
 parseLimit :: EpochSeconds -> HC.Response a -> Maybe RateLimit
 parseLimit currentTime response = do
     guard noneRemaining
@@ -111,6 +117,8 @@ parseLimit currentTime response = do
 newRateLimits :: RateLimits
 newRateLimits = RateLimits 0 M.empty
 
+-- Rate limits for discord can be global or route-level.
+-- Route-level limits can be specific to a "major" parameter (snowflake): channel, guild, or webhook
 data RateLimits = RateLimits
     { globalReset :: EpochSeconds
     , routeResets :: Map (Text, Maybe SomeSnowflake) EpochSeconds

@@ -39,9 +39,9 @@ discordInSem :: Members
               , Async
               , Error DiscordException
               , Resource
-              , Input GatewayMessage -- incoming messages
+              , Input GatewayMessage
               , Output Event -- events to pass to user code
-              , Output GatewayRequest -- outgoing messages
+              , Output GatewayRequest
               , State (Maybe Session)
               , Trace
               ] r
@@ -60,7 +60,7 @@ discordInSem token = do
     heartbeat :: Members
               '[ Embed IO
                , Output GatewayRequest
-               , State (Maybe Session) -- sequence number
+               , State (Maybe Session)
                ] r
               => Int -> Sem r ()
     heartbeat interval = forever $ do
@@ -85,8 +85,8 @@ eventLoop sid = forever $ do
         IncomingHeartbeat -> pure ()
 
         Dispatch n event -> do
-            put @(Maybe Session) (Just (Session sid n))
-            output @Event event
+            put (Just (Session sid n))
+            output event
 
         Hello _ -> throw UnexpectedHelloException
         InvalidSession resumable -> do
@@ -105,13 +105,13 @@ handshake currentSession token = do
 
     interval <- case msg of
         Hello heartbeatInterval -> pure heartbeatInterval
-        ev -> throw (ExpectedButFound "Hello" ev)
+        ev -> throw (HandshakeExpected "Hello" ev)
 
-    session <- case currentSession of
+    sid <- case currentSession of
         Just session -> resume token session *> pure (sessionId session)
-        _ -> login token
+        Nothing      -> login token
 
-    pure (interval, session)
+    pure (interval, sid)
 
 resume :: Member (Output GatewayRequest) r => Token -> Session -> Sem r ()
 resume token session =
@@ -128,13 +128,13 @@ login token = do
 
     input >>= \case
         Dispatch _ (Ready _ _ _ sid _) -> pure sid
-        ev -> throw (ExpectedButFound "Ready" ev)
+        ev -> throw (HandshakeExpected "Ready" ev)
 
 
 data DiscordException =
-    DecodeException String
-  | ExpectedButFound String GatewayMessage
-  | InvalidSessionException
+    DecodeException String -- we failed to parse a message received from the gateway
+  | HandshakeExpected String GatewayMessage -- we were expecting X, but found Y during the handshake
+  | InvalidSessionException -- discord told us we have an invalid session
   | ReconnectException -- discord told us to reconnect
   | UnexpectedHelloException -- discord sent a hello after the handshake
     deriving (Show, Typeable)
