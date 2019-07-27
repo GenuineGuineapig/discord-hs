@@ -5,7 +5,6 @@ module Discord.Types.Common
     , MsgEmbed(..)
     , Guild(..)
     , GuildMember(..)
-    , HasToken(..)
     , Channel(..)
     , Message(..)
     , Role(..)
@@ -18,7 +17,6 @@ module Discord.Types.Common
     )
     where
 
-import Control.Lens (Lens')
 import Control.Applicative ((<|>))
 import Data.Aeson
 import Data.Aeson.Types (Parser)
@@ -27,13 +25,6 @@ import Data.Text (Text)
 import Data.Word
 
 newtype Token = Token { unToken :: Text } deriving (IsString, ToJSON)
-
-class HasToken e where
-    tokenL :: Lens' e Token
-
-instance HasToken Token where
-    tokenL = id
-
 
 instance Show Token where
     show _ = "<secret token>"

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2beb941ad52fa3294298bfa1b6b031d52a4bc9d25cbe99ab163f02cb79de8be4
+-- hash: e21dbb8c6899ca4763b9529b72e877de094a699e3e48e466416b56246de92e96
 
 name:           discord-hs
 version:        0.1.0.0
@@ -45,7 +45,6 @@ library
     , containers
     , http-client
     , http-types
-    , lens
     , mtl
     , network
     , polysemy >=1.0.0.0 && <1.1
@@ -54,7 +53,6 @@ library
     , stm-chans
     , text
     , time
-    , unliftio
     , websockets
     , wuss
   default-language: Haskell2010

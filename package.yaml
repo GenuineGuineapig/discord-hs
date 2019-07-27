@@ -59,7 +59,6 @@ library:
     - containers
     - http-client
     - http-types
-    - lens
     - mtl
     - network
     - polysemy ^>=1.0.0.0
@@ -68,6 +67,5 @@ library:
     - stm-chans
     - text
     - time
-    - unliftio
     - websockets
     - wuss
