@@ -6,7 +6,6 @@ import Polysemy.Error
 import Polysemy.Input
 import Polysemy.Output
 import Polysemy.State
-import Polysemy.Trace
 
 import Test.Hspec
 
@@ -24,7 +23,6 @@ spec = do
                   . runError @DiscordException
                   . runInputStream @GatewayMessage incoming
                   . runOutputList @Event
-                  . ignoreTrace
                   $ eventLoop (sessionId session)
 
         it "should maintain a session" $ do

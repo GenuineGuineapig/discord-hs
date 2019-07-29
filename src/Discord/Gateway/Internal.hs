@@ -20,7 +20,6 @@ import           Polysemy.Input
 import           Polysemy.Output
 import           Polysemy.Resource
 import           Polysemy.State
-import           Polysemy.Trace
 
 import Discord.Types.Common
 import Discord.Types.Gateway
@@ -40,7 +39,6 @@ discordInSem :: Members
               , Output Event -- events to pass to user code
               , Output GatewayRequest
               , State (Maybe Session)
-              , Trace
               ] r
              => Token -> Sem r ()
 discordInSem token = do
@@ -71,7 +69,6 @@ eventLoop :: Members
            , Input GatewayMessage
            , Output Event
            , State (Maybe Session)
-           , Trace
            ] r
           => SessionId -> Sem r ()
 eventLoop sid = forever $ do
